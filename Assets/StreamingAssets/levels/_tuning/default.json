@@ -1,0 +1,43 @@
+{
+    "name": "default",
+    "balloon": {
+        "gravity": 4.897959232330322,
+        "dragKy": 0.5714285969734192,
+        "dragKx": 0.8999999761581421,
+        "restitutionWall": 0.75,
+        "restitutionPlayerPassive": 0.5,
+        "minBounceSpeed": 0.30000001192092898,
+        "maxSpeed": 16.0,
+        "bumpVelocity": 20.0,
+        "bumpInheritY": 0.3499999940395355,
+        "bumpInheritX": 0.5,
+        "palmSpeed": 6.0,
+        "spikeSpeed": 14.0,
+        "aimOffsetMaxAngle": 40.0,
+        "aimSideAngle": 55.0,
+        "aimUpPowerBonus": 0.15000000596046449,
+        "contextHoldFrames": 9,
+        "palmCooldownFrames": 15,
+        "spikeCooldownFrames": 36,
+        "activeContactMinPlayerVy": 1.0,
+        "playerBumpRadiusBonus": 0.15000000596046449,
+        "hazardPopRadiusShrink": 0.15000000596046449,
+        "armReachRadius": 1.399999976158142,
+        "flutterAccel": 1.2000000476837159,
+        "flutterFalloffSpeed": 3.0
+    },
+    "player": {
+        "runSpeed": 6.0,
+        "jumpHeightTiles": 3.200000047683716,
+        "gravity": 9.800000190734864,
+        "terminalFallSpeed": 18.0,
+        "coyoteFrames": 6,
+        "jumpBufferFrames": 10,
+        "halfWidth": 0.4000000059604645,
+        "halfHeight": 0.800000011920929,
+        "groundAccelFrames": 4,
+        "airAccelFrames": 8,
+        "jumpCutMultiplier": 0.3877550959587097,
+        "deathRestartFrames": 6
+    }
+}

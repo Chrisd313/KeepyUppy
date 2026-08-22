@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Program Files/Unity/Hub/Editor/**)",
+      "Bash(chmod +x test.sh)",
+      "Bash(./test.sh)",
+      "PowerShell(Get-Process Unity -ErrorAction SilentlyContinue)",
+      "Bash(f=\"C:/Users/chris/AppData/LocalLow/DefaultCompany/KeepyUppy/TestResults.xml\"; ls -la \"$f\" 2>&1; tr '>' '>\\\\n' < \"$f\" 2>/dev/null | grep -m1 '<test-run')",
+      "Read(//c/Users/chris/AppData/LocalLow/DefaultCompany/KeepyUppy/**)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(awk -F/ '{print $1}')",
+      "Bash(awk '{print $2}')"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+    "name": "KeepyUppy.Runtime",
+    "rootNamespace": "KeepyUppy.Runtime",
+    "references": [
+        "KeepyUppy.Sim",
+        "KeepyUppy.Input",
+        "KeepyUppy.Input.Devices",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,17 @@
+{
+    "name": "KeepyUppy.Input.Devices",
+    "rootNamespace": "KeepyUppy.InputLayer.Devices",
+    "references": [
+        "KeepyUppy.Input",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
