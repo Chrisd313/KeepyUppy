@@ -9,7 +9,11 @@
       "Read(//c/Users/chris/AppData/LocalLow/DefaultCompany/KeepyUppy/**)",
       "Bash(echo \"EXIT=$?\")",
       "Bash(awk -F/ '{print $1}')",
-      "Bash(awk '{print $2}')"
+      "Bash(awk '{print $2}')",
+      "Bash(read m *)",
+      "Bash(grep -q '\"__TRACKED_VAR__\"' Packages/manifest.json)",
+      "Bash(rm -rf Assets/Settings Assets/Settings.meta)",
+      "Bash(python -c ' *)"
     ]
   }
 }

@@ -200,13 +200,17 @@ Bump (jump contact) ignores all of this and uses contact-offset aiming (§6.5) e
 | Input buffer | 10 frames |
 | Ground accel | 4 frames to full speed |
 | Air accel | 8 frames to full speed |
-| Jump cut on release | × 0.5 while rising |
+| Jump cut on release | × 0.39 while rising |
 | Body size | 0.8 × 1.6 m |
 | Death → restart hold | 6 frames (100 ms) — inside §8's 200 ms budget |
+| Gravity | 40 m/s² |
+| Terminal fall | 18 m/s (§6.4) |
 
 The player is deliberately simple. Every point of movement complexity is attention taken away from the balloon.
 
-Jump velocity is **derived**, never stored: `v = sqrt(2 * g * h)`, so the height stays the number that gets tuned. At 3.2 tiles that is 7.92 m/s.
+Jump velocity is **derived**, never stored: `v = sqrt(2 * g * h)`, so the height stays the number that gets tuned. At 3.2 tiles and gravity 40 that is 16.0 m/s, reaching apex in 0.40 s.
+
+**Player gravity is 40, not 9.8, and is deliberately unrelated to the balloon's 1.0 (§6.4).** Real-world gravity gave a 0.81 s apex and a 1.6 s hop — sluggish next to the 0.35–0.45 s most platformers use. Raising `g` raises the launch speed with it, so the height is unchanged and only the *pace* of the arc changes. The 40:1 split between player and balloon is the §6.4 contrast made literal: the player is heavy and immediate, the balloon is not.
 
 The bottom five rows were added 2026-08-22 — values the model cannot avoid choosing and the table did not previously state. All are sliders (§18).
 
@@ -244,13 +248,13 @@ Starting values. Every one of these is a slider in the tuning panel (§18).
 
 | Parameter | Value | Note |
 |---|---|---|
-| `gravity` | 9.8 m/s² | shared with player |
-| `drag_ky` | 2.45 | → terminal fall ≈ 2.0 m/s at Nominal |
+| `gravity` | 1.0 m/s² | **No longer shared with the player** (who runs at 40). Read it as net weight after buoyancy. Tuned 2026-08-22, was 9.8. |
+| `drag_ky` | 0.25 | → terminal fall ≈ 2.0 m/s at Nominal, unchanged. Tuned 2026-08-22, was 2.45. |
 | `drag_kx` | 0.9 | drifts ~3–4 tiles before settling |
 | Player terminal fall | ~18 m/s | the contrast *is* the feel |
 | `restitution_wall` | 0.75 | |
 | `restitution_player_passive` | 0.5 | see Law 4.2 |
-| `bump_velocity` | sets `v.y = 9.0` | **set**, never add force |
+| `bump_velocity` | sets `v.y = 20.0` | **set**, never add force. Tuned 2026-08-22, was 9.0 — see the note below on why it had to move. |
 | `bump_inherit_y` | × 0.35 | |
 | `bump_inherit_x` | × 0.5 | running bumps travel |
 | `palm_speed` | 6.0 | 0.25 s cooldown |
@@ -269,6 +273,21 @@ Starting values. Every one of these is a slider in the tuning panel (§18).
 | `hazard_pop_radius_shrink` | −0.15 m | §8 — every hazard's pop volume, smaller than its visual |
 
 Rows below `max_speed` added 2026-08-22: numbers §5.4, §5.5 and §8 describe in words but never quantified.
+
+#### Why gravity and drag moved together — 2026-08-22
+
+The original 9.8 / 2.45 pair gave a bump only **0.62 m** of rise. Quadratic drag makes rise logarithmic in launch speed:
+
+```
+rise       = ln(1 + k·v0²/g) / (2k)
+fall speed = sqrt(g / k)
+```
+
+so raising `bump_velocity` alone is nearly useless — reaching 2 m of rise at the old drag would have needed roughly 269 m/s. Fall speed depends only on the **ratio** `g/k`, and rise scales as `1/g` when that ratio is held. Keeping `g/k = 4` preserves the 2.0 m/s descent exactly while scaling the bounce: 9.8/2.45 → 1.0/0.25 buys about 6× the height for an identical fall.
+
+With drag that low, `bump_velocity` becomes a real lever again, hence 9.0 → 20.0. **Retune the drag pair before the bump speed, not after** — at the old drag the bump slider does almost nothing.
+
+Watch this against §4.3: gravity is the clock, and a very low balloon gravity weakens the room's time pressure. This is the knob to check first if levels start feeling slack.
 
 **Set velocity, don't add force.** Adding means a bump's outcome depends on the balloon's incoming velocity, so the same input produces different results. Poison for a memorisation game.
 
@@ -575,6 +594,27 @@ Build size and cold-load time are what kill web releases, and Unity's web export
 - Brotli compression
 - Remove every unused package (especially unused physics)
 - Single texture atlas per world
+
+#### Measured baseline — 2026-08-22, end of P0
+
+First WebGL build, Unity 6000.2.6f2. **11.81 MB** Brotli payload with no game content in it: 7.62 MB `wasm`, 4.10 MB `data`. Build time 23 minutes.
+
+The data file was almost entirely things the game does not use — the Unity splash logo (2.7 MB uncompressed, 22.5% of all assets), and URP's post-processing kit: FilmGrain textures (~2.3 MB), SMAA, BlueNoise, UberPost. The game's own content is a rounding error.
+
+This was over budget for a Poki-class portal before a single sprite existed, which is the risk this section was written about.
+
+#### After reduction — same day
+
+| | Baseline | Splash off, stripping High, 28 packages cut | URP dropped |
+|---|---|---|---|
+| `wasm.br` | 7.62 MB | 6.13 MB | **2.62 MB** |
+| `data.br` | 4.10 MB | 3.50 MB | **0.71 MB** |
+| **payload** | **11.81 MB** | **9.73 MB** | **3.42 MB** |
+| build time | 23 min | 16 min | 6 min |
+
+**−71%.** Dropping URP was worth 6.31 MB on its own, and most of that was *code*, not assets — the render pipeline was 3.51 MB of the wasm. A game of untextured quads on one unlit shader has no use for it.
+
+Remaining payload is essentially Unity's floor: 2.62 MB of engine and IL2CPP runtime, plus `unity_builtin_extra` at 520 KB. Content budget from here is roughly 1.5 MB if the target is to stay under 5 MB — which makes §17.2's "one texture atlas per world" a real constraint, not a slogan.
 - **Check the build size at the end of prototype week 1.** Retrofitting this is miserable.
 
 ### 17.3 Pacing consequences
@@ -695,4 +735,7 @@ Independent of premise, and bigger than it looks. A face makes every pop hurt, m
 | 2026-08-22 | **LOCKED change — `IInputSource` (§5.5) gains `RestartPressed`, `Sample(int step)` and `ResetIntents()`** | `RestartPressed` is an intent: §5.5's own binding table lists `R` = Restart, and reading `R` downstream would be exactly the raw-key leak the interface exists to prevent. It also lets `ScriptedInputSource` drive the death→restart loop, which §8 puts a hard 200 ms budget on. `Sample(int step)` exists because presses arrive on render frames and must be committed to exactly one fixed step — below 60 fps a press would otherwise be silently lost. `ResetIntents()` stops a buffered press crossing a restart. The locked *principle* — intents, never raw keys — is unchanged. `PausePressed` to follow when a pause system exists. |
 | 2026-08-22 | Balloon dies on floor contact; walls and ceilings still bounce at `restitution_wall` | The fail state of keepy uppy. Distinguished by contact normal, so one rule covers every surface. |
 | 2026-08-22 | Directional spikes are lethal on their pointed face only | The flat back of a spike reads as ordinary geometry, so treating it as lethal feels arbitrary. Lets a floor spike sit beside standable ground and a wall spike threaten only the room. |
+| 2026-08-22 | **Dropped URP for the built-in render pipeline** | Worth 6.31 MB of an 11.81 MB WebGL payload — 3.51 MB of it wasm, not assets. The game draws untextured quads through a single unlit shader; URP's post-processing kit (film grain, blue noise, SMAA, UberPost) was the entire asset payload, and it forced the physics and terrain modules back into the build. Taken now rather than after the art pass, when it would have been far more expensive. Cost: no 2D lights without reversing this. |
+| 2026-08-22 | Unity splash disabled, managed stripping High, engine code stripping on, WebGL exceptions off | §17.2 mitigations. Applied as code in `WebGLBuild.ConfigureForWeb` rather than as editor settings, so the shipping configuration is version-controlled and reproducible. Exceptions-off is a real tradeoff: smallest and fastest, but a runtime error in the wild is much harder to diagnose. Revisit before public release. |
+| 2026-08-22 | Package manifest cut from 44 to 16 | "Remove every unused package" (§17.2). Physics **and Physics2D** both went — the balloon and player are hand-integrated with custom swept collision per §6.1, so Unity physics was never used at all. uGUI went with URP; the dev panels are IMGUI. |
 | 2026-08-22 | Hazard tiles block whatever they do *not* kill, and are transparent to whatever they do | A tile cannot both stop a body and pop it: collision holds the body outside, so the §8-mandated *smaller-than-visual* kill volume would never be reached. The balloon flies into a spike and pops; the player lands on the same spike and is killed by a volume that bleeds slightly through its surface. |
