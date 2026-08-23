@@ -56,8 +56,19 @@ namespace KeepyUppy.BuildTools
             Debug.Log($"[build] stripping level:   {PlayerSettings.GetManagedStrippingLevel(NamedBuildTarget.WebGL)}");
             Debug.Log($"[build] compression:       {PlayerSettings.WebGL.compressionFormat}");
 
-            BuildReport report = BuildPipeline.BuildPlayer(options);
-            BuildSummary summary = report.summary;
+            BuildReport report;
+            BuildSummary summary;
+            try
+            {
+                report = BuildPipeline.BuildPlayer(options);
+                summary = report.summary;
+            }
+            finally
+            {
+                // Put the dev define back however the build went, so the next editor session
+                // still has the level editor.
+                ProjectDefines.Set(NamedBuildTarget.WebGL, ProjectDefines.LevelEditor, true);
+            }
 
             if (summary.result != BuildResult.Succeeded)
             {
@@ -96,6 +107,11 @@ namespace KeepyUppy.BuildTools
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
 
             PlayerSettings.WebGL.debugSymbolMode = WebGLDebugSymbolMode.Off;
+
+            // The level editor is dev-only runtime code. Defines are per target rather than
+            // per configuration, so a release build has to strip it explicitly. Restored
+            // after the build so editor work continues uninterrupted.
+            ProjectDefines.Set(NamedBuildTarget.WebGL, ProjectDefines.LevelEditor, false);
 
             AssetDatabase.SaveAssets();
         }

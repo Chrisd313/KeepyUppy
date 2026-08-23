@@ -19,7 +19,9 @@ namespace KeepyUppy.Runtime
     /// development build for playtesting. Dev-only — compiled out of release builds.
     /// Switch the guard to LEVEL_EDITOR once that define exists.
     ///
-    /// Toggle with T. Avoids the reserved gameplay keys (Space W A D J R Esc, arrows).
+    /// Toggle with backtick. Avoids the reserved gameplay keys (Space W A D J R Esc, arrows)
+    /// and leaves T to the level editor's safe-area overlay, which is what the spec assigns
+    /// it to.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class TuningPanel : MonoBehaviour
@@ -72,18 +74,19 @@ namespace KeepyUppy.Runtime
 
         void Update()
         {
-            // 'T' must not close the panel while it is being typed into a field.
-            if (DevInputCapture.KeyboardCaptured) return;
+            // The toggle must not fire while a field is being typed into. The level editor's
+            // Edit mode is exempt: the panel is meant to be reachable while authoring.
+            if (DevInputCapture.TextFieldFocused) return;
 
             Keyboard kb = Keyboard.current;
-            if (kb != null && kb.tKey.wasPressedThisFrame)
+            if (kb != null && kb.backquoteKey.wasPressedThisFrame)
             {
                 _open = !_open;
                 if (_open) RefreshProfileList();
             }
         }
 
-        void OnDisable() => DevInputCapture.KeyboardCaptured = false;
+        void OnDisable() => DevInputCapture.TextFieldFocused = false;
 
         void RefreshProfileList() => _profiles = Source?.List() ?? Array.Empty<string>();
 
@@ -192,13 +195,13 @@ namespace KeepyUppy.Runtime
 
             if (!_open)
             {
-                DevInputCapture.KeyboardCaptured = false;
-                GUI.Label(new Rect(Screen.width - 150f, 8f, 140f, 20f), "T — tuning panel");
+                DevInputCapture.TextFieldFocused = false;
+                GUI.Label(new Rect(Screen.width - 150f, 8f, 140f, 20f), "` — tuning panel");
                 return;
             }
 
             // Any focused field owns the keyboard, so gameplay bindings stay out of the way.
-            DevInputCapture.KeyboardCaptured = !string.IsNullOrEmpty(GUI.GetNameOfFocusedControl());
+            DevInputCapture.TextFieldFocused = !string.IsNullOrEmpty(GUI.GetNameOfFocusedControl());
 
             // Enter commits and releases focus, which also reformats the box.
             if (Event.current.type == EventType.KeyDown &&
@@ -240,6 +243,11 @@ namespace KeepyUppy.Runtime
             if (GUILayout.Button("Save")) SaveProfile();
             if (GUILayout.Button("Load")) LoadProfile(ProfileName);
             if (GUILayout.Button("Reset")) ResetToDefault();
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Make these values the startup default", GUILayout.Width(280f)))
+                MakeDefault();
             GUILayout.EndHorizontal();
 
             if (_profiles.Count == 0) return;
@@ -323,6 +331,24 @@ namespace KeepyUppy.Runtime
             Apply(profile);
             ProfileName = name;
             _status = $"loaded '{name}'";
+        }
+
+        /// <summary>
+        /// Writes the current values over default.json, which is the profile the game boots
+        /// with — so the feel you are holding becomes the one you start in.
+        ///
+        /// Nothing is lost: Reset still restores the code defaults in BalloonTuning.Default,
+        /// and any named profile you saved is untouched.
+        /// </summary>
+        public void MakeDefault()
+        {
+            if (Source == null || !Source.CanSave) { _status = "this build cannot save profiles"; return; }
+
+            Source.Save(FileTuningSource.DefaultProfileName,
+                        CurrentProfile(FileTuningSource.DefaultProfileName));
+
+            RefreshProfileList();
+            _status = "these values are now the startup default";
         }
 
         public void ResetToDefault()

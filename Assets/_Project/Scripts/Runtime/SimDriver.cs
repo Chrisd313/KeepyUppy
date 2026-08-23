@@ -43,8 +43,17 @@ namespace KeepyUppy.Runtime
             Keyboard.Latch();
         }
 
+        /// <summary>
+        /// Holds the sim still without unwinding any of its state. Used by the level editor
+        /// while authoring; the step counter simply stops advancing, so determinism is
+        /// unaffected — a paused run resumes exactly where it was.
+        /// </summary>
+        public bool Paused { get; set; }
+
         void FixedUpdate()
         {
+            if (Paused) return;
+
             World.Tick();
         }
     }

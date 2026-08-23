@@ -177,6 +177,15 @@ One JSON file per level, human-readable, one file per level, committed to git. T
 - **`start_state` + `links` is the whole betrayal toolkit.** Every Level Devil-style trap is "something dormant, armed by the player committing." `player_region` triggers with `once: true` are the workhorse.
 - **`phase`** on periodic entities is essential and easy to forget. Without it every saw in the room moves in lockstep and levels look mechanical.
 
+### Deviations from the sketch above — 2026-08-22, as built
+
+- **`tiles` rows are plain, not run-length encoded.** The schema text said RLE; the example above did not. RLE saves a few hundred bytes on a file that is already tiny and destroys the readable diff this section calls a feature. Plain rows won.
+- **`path` is a flat list of coordinates**, `[12, 9, 20, 9]` rather than `[[12,9],[20,9]]`. Unity's `JsonUtility` cannot serialise nested arrays. Read it as consecutive x,y pairs; the validator rejects an odd-length path.
+- **`params` is a fixed superset, not a free-form object.** `JsonUtility` has no dictionaries, so every known entity parameter is a declared field and unused ones serialise as `0`. The cost is noise in the file; the benefit is that a load/save cycle cannot silently delete a parameter it does not recognise. If this grows unwieldy, that is the signal to add Newtonsoft.
+- **Plain JSON, not `jsonc`.** No `//` comments — use `meta.author_note`.
+
+The whole schema is modelled in code, including entities, triggers and links that no system reads yet. `JsonUtility` discards fields it has no member for, so a partial model would mean the editor deleting every entity in a file the moment it saved one.
+
 ---
 
 ## 4. Editing
