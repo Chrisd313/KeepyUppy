@@ -1,5 +1,10 @@
+using System.Collections.Generic;
 using KeepyUppy.Sim;
+using KeepyUppy.Sim.Level;
 using UnityEngine;
+#if LEVEL_EDITOR
+using KeepyUppy.LevelEditing;
+#endif
 
 namespace KeepyUppy.Runtime
 {
@@ -17,7 +22,7 @@ namespace KeepyUppy.Runtime
         /// <summary>Set false to stop the bootstrap auto-installing itself.</summary>
         public static bool AutoInstall = true;
 
-        const int Seed = 1337;
+        public const int Seed = 1337;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Install()
@@ -35,23 +40,27 @@ namespace KeepyUppy.Runtime
         /// <summary>Profile loaded at startup. Change it to boot into a different feel.</summary>
         public static string StartingProfile = FileTuningSource.DefaultProfileName;
 
+        /// <summary>Level loaded at startup. Change it to boot into a different room.</summary>
+        public static string StartingLevel = "w1_01";
+
         SimDriver _driver;
         FileTuningSource _tuningSource;
+        FileLevelSource _levelSource;
+        LevelData _level;
+        Camera _camera;
 
         void Awake()
         {
             _driver = gameObject.AddComponent<SimDriver>();
 
             SimWorld world = _driver.World;
-            BuildRoom(world.Grid);
-            BuildAir(world.Air);
             LoadTuning(world);
+            LoadLevel(world, out Vector2 balloonSpawn, out Vector2 playerSpawn);
 
-            world.Balloon.Radius = InflationBands.RadiusOf(InflationBand.Nominal);
             world.Configure(
-                balloonPos: new Vector2(6f, 13f),
+                balloonPos: balloonSpawn,
                 balloonVel: Vector2.zero,
-                playerPos: new Vector2(4f, 2f),
+                playerPos: playerSpawn,
                 input: _driver.Keyboard,
                 seed: Seed
             );
@@ -68,6 +77,13 @@ namespace KeepyUppy.Runtime
             panel.Driver = _driver;
             panel.Source = _tuningSource;
             panel.ProfileName = StartingProfile;
+#endif
+
+#if LEVEL_EDITOR
+            var editor = gameObject.AddComponent<LevelEditorController>();
+            editor.Host = new BootstrapEditorHost(this, _driver, _camera, _levelSource);
+            editor.LevelId = StartingLevel;
+            editor.Begin(_level);
 #endif
         }
 
@@ -92,9 +108,78 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
-        /// Box room, two ledges, and enough hazards to make the room hostile. Hard-coded
-        /// placeholder geometry — replaced by the JSON loader in a later session.
+        /// Levels are JSON (level-editor-spec 3), and the shipping game and the editor read
+        /// the same file. If the level is missing, the room built in code below seeds it once
+        /// — so the file is correct by construction rather than hand-typed, and after that the
+        /// JSON is the only source of truth.
         /// </summary>
+        void LoadLevel(SimWorld world, out Vector2 balloonSpawn, out Vector2 playerSpawn)
+        {
+            _levelSource = new FileLevelSource();
+            _levelSource.SaveIfAbsent(StartingLevel, SeedLevel());
+
+            if (!_levelSource.TryLoad(StartingLevel, out LevelData level))
+            {
+                Debug.LogWarning($"[level] '{StartingLevel}' not found; falling back to the seed room");
+                level = SeedLevel();
+            }
+
+            List<string> warnings = LevelValidator.Validate(level);
+            foreach (string warning in warnings) Debug.LogWarning($"[level] {StartingLevel}: {warning}");
+
+            _level = level;
+            LevelLoader.Apply(level, world, out balloonSpawn, out playerSpawn);
+        }
+
+        /// <summary>
+        /// The room this project used before levels were files. Kept only to seed the first
+        /// JSON; edit the JSON from here on, not this method.
+        /// </summary>
+        public static LevelData SeedLevel()
+        {
+            var grid = new TileGrid();
+            BuildRoom(grid);
+
+            return new LevelData
+            {
+                id = StartingLevel,
+                name = "The Test Room",
+                world = 1,
+                index = 1,
+                tiles = grid.ToRows(),
+                spawn = new LevelSpawn
+                {
+                    player = new[] { 4f, 2f },
+                    balloon = new[] { 6f, 13f },
+                    balloon_inflation = "nominal",
+                },
+                exit = new LevelExit
+                {
+                    pos = new[] { 29f, 4f },
+                    shape = "ring",
+                    diameter = 1.6f,
+                    required_band = "nominal",
+                },
+                zones = new[]
+                {
+                    new LevelZone
+                    {
+                        id = "z_updraught",
+                        type = "air",
+                        rect = new[] { 20f, 1f, 6f, 10f },
+                        @params = new ZoneParams { vy = 4.5f },
+                        start_state = "on",
+                    },
+                },
+                meta = new LevelMeta
+                {
+                    par_touches = 7,
+                    author_note = "Seeded from the pre-JSON hardcoded room.",
+                    tuning_profile = FileTuningSource.DefaultProfileName,
+                },
+            };
+        }
+
         static void BuildRoom(TileGrid grid)
         {
             grid.Clear();
@@ -112,16 +197,6 @@ namespace KeepyUppy.Runtime
 
             // Wall spikes on the right, pointing back into the room.
             grid.Fill(30, 6, 1, 4, TileKind.SpikeLeft);
-        }
-
-        /// <summary>
-        /// One updraught over the right-hand ledge, to prove v_air resolves through the
-        /// drag term and not through bespoke wind code (GDD 6.2).
-        /// </summary>
-        static void BuildAir(AirField air)
-        {
-            air.Clear();
-            air.Add(new AirZone("z_updraught", new Rect(20f, 1f, 6f, 10f), new Vector2(0f, 4.5f)));
         }
 
         void BuildCamera()
@@ -148,33 +223,20 @@ namespace KeepyUppy.Runtime
             cam.backgroundColor = SimPalette.Background;
             cam.nearClipPlane = 0.1f;
             cam.farClipPlane = 100f;
+
+            _camera = cam;
         }
 
+        /// <summary>
+        /// Tile quads follow the grid rather than being built once, so painting in the editor
+        /// shows up immediately.
+        /// </summary>
         void BuildTileViews(TileGrid grid)
         {
             var root = new GameObject("Tiles");
             root.transform.SetParent(transform, false);
 
-            for (int y = 0; y < TileGrid.Height; y++)
-                for (int x = 0; x < TileGrid.Width; x++)
-                {
-                    TileKind kind = grid[x, y];
-                    if (kind == TileKind.Empty)
-                        continue;
-
-                    Color color = kind == TileKind.Solid ? SimPalette.Solid : SimPalette.Hazard;
-
-                    // Static geometry snaps to the tile grid (level-editor-spec 3); the tile
-                    // centre sits at (x + 0.5, y + 0.5).
-                    QuadView.Create(
-                        root.transform,
-                        $"tile_{x}_{y}",
-                        color,
-                        new Vector2(x + 0.5f, y + 0.5f),
-                        Vector2.one,
-                        0f
-                    );
-                }
+            root.AddComponent<TileViewSync>().Grid = grid;
         }
 
         void BuildBalloonView(BalloonBody balloon)

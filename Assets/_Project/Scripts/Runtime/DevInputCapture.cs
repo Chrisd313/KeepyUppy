@@ -12,6 +12,12 @@ namespace KeepyUppy.Runtime
     /// </summary>
     public static class DevInputCapture
     {
-        public static bool KeyboardCaptured;
+        /// <summary>A tuning-panel text box has focus.</summary>
+        public static bool TextFieldFocused;
+
+        /// <summary>The level editor is in Edit mode — painting must not also drive the player.</summary>
+        public static bool EditorModeActive;
+
+        public static bool KeyboardCaptured => TextFieldFocused || EditorModeActive;
     }
 }

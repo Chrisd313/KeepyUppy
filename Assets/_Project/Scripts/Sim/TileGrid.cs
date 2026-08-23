@@ -29,10 +29,25 @@ namespace KeepyUppy.Sim
 
         readonly TileKind[] _cells = new TileKind[Width * Height];
 
+        /// <summary>
+        /// Incremented on every change. Rendering watches this to know when to rebuild,
+        /// which is what lets the editor paint tiles and see them immediately.
+        /// </summary>
+        public int Version { get; private set; }
+
         public TileKind this[int x, int y]
         {
             get => InBounds(x, y) ? _cells[y * Width + x] : TileKind.Solid;
-            set { if (InBounds(x, y)) _cells[y * Width + x] = value; }
+            set
+            {
+                if (!InBounds(x, y)) return;
+
+                int i = y * Width + x;
+                if (_cells[i] == value) return;
+
+                _cells[i] = value;
+                Version++;
+            }
         }
 
         public static bool InBounds(int x, int y)
@@ -75,6 +90,7 @@ namespace KeepyUppy.Sim
         public void Clear()
         {
             for (int i = 0; i < _cells.Length; i++) _cells[i] = TileKind.Empty;
+            Version++;
         }
 
         public void Fill(int x, int y, int w, int h, TileKind kind)
@@ -107,6 +123,41 @@ namespace KeepyUppy.Sim
                 case 'x': return TileKind.PlayerLethal;
                 default:  return TileKind.Empty;
             }
+        }
+
+        public static char ToChar(TileKind kind)
+        {
+            switch (kind)
+            {
+                case TileKind.Solid:        return '#';
+                case TileKind.OneWay:       return '=';
+                case TileKind.Rough:        return '~';
+                case TileKind.SpikeUp:      return '^';
+                case TileKind.SpikeDown:    return 'v';
+                case TileKind.SpikeLeft:    return '<';
+                case TileKind.SpikeRight:   return '>';
+                case TileKind.PlayerLethal: return 'x';
+                default:                    return '.';
+            }
+        }
+
+        /// <summary>
+        /// The grid as level-JSON rows, row 0 being the top of the room. Inverse of
+        /// <see cref="LoadRows"/>.
+        /// </summary>
+        public string[] ToRows()
+        {
+            var rows = new string[Height];
+            var chars = new char[Width];
+
+            for (int r = 0; r < Height; r++)
+            {
+                int y = Height - 1 - r;
+                for (int x = 0; x < Width; x++) chars[x] = ToChar(this[x, y]);
+                rows[r] = new string(chars);
+            }
+
+            return rows;
         }
 
         /// <summary>

@@ -4,6 +4,7 @@
     "references": [
         "KeepyUppy.Sim",
         "KeepyUppy.Input",
+        "KeepyUppy.LevelEditor",
         "KeepyUppy.Runtime",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
