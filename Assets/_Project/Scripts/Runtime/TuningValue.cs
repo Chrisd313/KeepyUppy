@@ -16,9 +16,13 @@ namespace KeepyUppy.Runtime
             => value.ToString(integer ? "0" : "0.###", CultureInfo.InvariantCulture);
 
         /// <summary>
-        /// Parses a typed value. Rejects partial input ("", "-", "2.") by returning false and
-        /// leaving the field alone, so typing never destroys the value mid-keystroke.
-        /// Always invariant: a comma decimal separator must not depend on the machine locale.
+        /// Parses a typed value. Input that means nothing yet ("", "-", "abc") returns false
+        /// and leaves the value alone, so typing never destroys it mid-keystroke. Input that
+        /// does parse applies immediately, including partial forms like "2." and ".5" — the
+        /// box keeps showing what was typed, so the value follows the text rather than the
+        /// text snapping to the value.
+        ///
+        /// Always invariant: the decimal separator must not depend on the machine locale.
         /// </summary>
         public static bool TryParse(string text, bool integer, out float value)
         {

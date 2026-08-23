@@ -23,13 +23,26 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
-        public void PartialInput_DoesNotApply()
+        public void UnparseableInput_DoesNotApply()
         {
-            // Typing "2." must not blank the value or snap the box back mid-keystroke.
+            // Nothing usable yet: leave the value alone and let the typist keep going.
             Assert.IsFalse(TuningValue.TryParse("", false, out _));
             Assert.IsFalse(TuningValue.TryParse("-", false, out _));
-            Assert.IsFalse(TuningValue.TryParse("2.", false, out _), "trailing separator");
             Assert.IsFalse(TuningValue.TryParse("abc", false, out _));
+            Assert.IsFalse(TuningValue.TryParse("1.2.3", false, out _));
+        }
+
+        [Test]
+        public void MidTypingInput_AppliesWhatItHasSoFar()
+        {
+            // "2." and ".5" both parse, so the value updates as you type. Harmless, because
+            // the box keeps showing exactly what was typed until focus is lost — the value
+            // follows the text rather than the text snapping to the value.
+            Assert.IsTrue(TuningValue.TryParse("2.", false, out float v));
+            Assert.AreEqual(2f, v, 1e-6f);
+
+            Assert.IsTrue(TuningValue.TryParse(".5", false, out v));
+            Assert.AreEqual(0.5f, v, 1e-6f);
         }
 
         [Test]
