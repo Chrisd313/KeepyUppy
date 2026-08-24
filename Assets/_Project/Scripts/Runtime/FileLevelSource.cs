@@ -34,7 +34,15 @@ namespace KeepyUppy.Runtime
 
             string[] files = System.IO.Directory.GetFiles(_directory, "*.json");
             var ids = new List<string>(files.Length);
-            foreach (string file in files) ids.Add(Path.GetFileNameWithoutExtension(file));
+            foreach (string file in files)
+            {
+                string id = Path.GetFileNameWithoutExtension(file);
+
+                // The manifest shares the directory with the levels and is not one of them.
+                if (id == LevelIndex.FileName) continue;
+
+                ids.Add(id);
+            }
 
             ids.Sort(StringComparer.Ordinal);
             return ids;
@@ -82,6 +90,36 @@ namespace KeepyUppy.Runtime
 
             Save(id, level);
             return true;
+        }
+
+        public bool TryLoadIndex(out LevelIndex index)
+        {
+            index = null;
+
+            string path = PathFor(LevelIndex.FileName);
+            if (!File.Exists(path)) return false;
+
+            try
+            {
+                index = JsonUtility.FromJson<LevelIndex>(File.ReadAllText(path));
+            }
+            catch (Exception e)
+            {
+                // Hand-edited files exist. A broken manifest must not take the editor down.
+                Debug.LogWarning($"[level] could not read the manifest: {e.Message}");
+                index = null;
+                return false;
+            }
+
+            return index != null;
+        }
+
+        public void SaveIndex(LevelIndex index)
+        {
+            if (index == null) throw new ArgumentNullException(nameof(index));
+
+            System.IO.Directory.CreateDirectory(_directory);
+            File.WriteAllText(PathFor(LevelIndex.FileName), JsonUtility.ToJson(index, prettyPrint: true));
         }
 
         string PathFor(string id) => Path.Combine(_directory, id + ".json");

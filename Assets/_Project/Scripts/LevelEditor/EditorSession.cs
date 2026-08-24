@@ -51,6 +51,105 @@ namespace KeepyUppy.LevelEditing
         public bool Dirty { get; private set; }
 
         /// <summary>
+        /// The manifest (spec: menus and the level list). Held here rather than in the
+        /// controller so every mutation is testable without a scene, as with everything else
+        /// in this class.
+        /// </summary>
+        public LevelIndex Index { get; private set; } = new LevelIndex();
+
+        /// <summary>
+        /// Unsaved manifest changes. Deliberately separate from <see cref="Dirty"/>: the
+        /// manifest is a different file with a different save, and conflating them would make
+        /// saving a level appear to save the list.
+        /// </summary>
+        public bool IndexDirty { get; private set; }
+
+        public void LoadIndex(LevelIndex index)
+        {
+            Index = index ?? new LevelIndex();
+            IndexDirty = false;
+        }
+
+        public void MarkIndexSaved() => IndexDirty = false;
+
+        /// <summary>
+        /// Lists a level at the end of a world, creating the world if it does not exist yet -
+        /// authoring world 3 before world 3 exists is normal, and refusing would only mean
+        /// hand-editing the manifest, which is what this exists to avoid.
+        /// </summary>
+        public LevelWorld AddLevel(string id, string worldId)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+
+            LevelWorld existing = Index.WorldOf(id);
+            if (existing != null) return existing;
+
+            LevelWorld world = FindWorld(worldId);
+
+            if (world == null)
+            {
+                world = new LevelWorld { id = worldId, name = worldId, levels = new string[0] };
+
+                var worlds = new List<LevelWorld>(Index.worlds ?? new LevelWorld[0]) { world };
+                Index.worlds = worlds.ToArray();
+            }
+
+            var levels = new List<string>(world.levels ?? new string[0]) { id };
+            world.levels = levels.ToArray();
+
+            IndexDirty = true;
+            return world;
+        }
+
+        /// <summary>
+        /// Unlists a level, turning it into a draft. The file is deliberately left on disk:
+        /// losing authored work to a mis-click is worse than an unlisted file.
+        /// </summary>
+        public bool RemoveLevel(string id)
+        {
+            LevelWorld world = Index.WorldOf(id);
+            if (world == null) return false;
+
+            var levels = new List<string>(world.levels);
+            levels.Remove(id);
+            world.levels = levels.ToArray();
+
+            IndexDirty = true;
+            return true;
+        }
+
+        /// <summary>
+        /// Moves a level one slot within its own world. Does not carry it into the next
+        /// world: reordering and re-homing are different intentions.
+        /// </summary>
+        public bool MoveLevel(string id, int direction)
+        {
+            LevelWorld world = Index.WorldOf(id);
+            if (world == null || direction == 0) return false;
+
+            int from = Index.SlotOf(id);
+            int to = from + (direction < 0 ? -1 : 1);
+
+            if (to < 0 || to >= world.levels.Length) return false;
+
+            world.levels[from] = world.levels[to];
+            world.levels[to] = id;
+
+            IndexDirty = true;
+            return true;
+        }
+
+        LevelWorld FindWorld(string worldId)
+        {
+            if (Index.worlds == null) return null;
+
+            foreach (LevelWorld world in Index.worlds)
+                if (world != null && world.id == worldId) return world;
+
+            return null;
+        }
+
+        /// <summary>
         /// Entity types offered by the palette.
         ///
         /// The first three are simulated (GDD 9.2). The rest are placeable and round-trip

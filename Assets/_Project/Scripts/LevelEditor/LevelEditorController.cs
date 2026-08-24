@@ -41,6 +41,11 @@ namespace KeepyUppy.LevelEditing
         bool _showGrid = true;
         bool _showHitboxes;
         bool _showSafeArea;
+        bool _showBrowser;
+        Rect _browserRect;
+        Vector2 _browserScroll;
+        string _newLevelId = "w1_02";
+        string _newWorldId = "w1";
 
         string _status = "";
         List<string> _warnings = new List<string>();
@@ -77,6 +82,11 @@ namespace KeepyUppy.LevelEditing
             // than at the next Tab.
             Session = new EditorSession(Host.World.Grid);
             Session.Load(level);
+
+            // The manifest decides what is in the game; without it the browser can only offer
+            // whatever files happen to be present, which is the state this replaces.
+            Session.LoadIndex(Host.Levels.TryLoadIndex(out LevelIndex index) ? index : LevelIndex.Default());
+
             EnterEdit();
         }
 
@@ -133,6 +143,7 @@ namespace KeepyUppy.LevelEditing
             if (kb.gKey.wasPressedThisFrame) _showGrid = !_showGrid;
             if (kb.hKey.wasPressedThisFrame) _showHitboxes = !_showHitboxes;
             if (kb.tKey.wasPressedThisFrame) _showSafeArea = !_showSafeArea;
+            if (kb.lKey.wasPressedThisFrame) _showBrowser = !_showBrowser;
 
             if (kb.deleteKey.wasPressedThisFrame && Session.SelectedEntityId != null)
             {
@@ -334,6 +345,7 @@ namespace KeepyUppy.LevelEditing
         {
             var point = new Vector2(screen.x, Screen.height - screen.y);
             if (_toggleRect.Contains(point)) return true;
+            if (_showBrowser && _browserRect.Contains(point)) return true;
             if (!_showPanel) return false;
 
             return _paletteRect.Contains(point) || _inspectorRect.Contains(point);
@@ -397,6 +409,7 @@ namespace KeepyUppy.LevelEditing
         {
             LevelData level = Session.Flush();
             _warnings = LevelValidator.Validate(level);
+            _warnings.AddRange(LevelIndexValidator.ValidateSlot(level, Session.Index));
 
             // Validation never blocks a save. A half-finished level must always be saveable.
             Host.Levels.Save(LevelId, level);
@@ -405,6 +418,97 @@ namespace KeepyUppy.LevelEditing
             _status = _warnings.Count == 0
                 ? $"saved {LevelId}"
                 : $"saved {LevelId} with {_warnings.Count} warning(s)";
+        }
+
+        /// <summary>
+        /// Switches the level being edited. Unsaved work in the current one is kept by saving
+        /// it first: losing a room to a mis-click in a list is not a trade worth making.
+        /// </summary>
+        void Open(string id)
+        {
+            if (id == LevelId) return;
+
+            if (Session.Dirty) Save();
+
+            if (!Host.Levels.TryLoad(id, out LevelData level))
+            {
+                _status = $"could not load '{id}'";
+                return;
+            }
+
+            LevelId = id;
+            Session.Load(level);
+
+            // EnterEdit applies the level itself; applying it here too would just be a
+            // duplicate ApplyLevel on the same frame.
+            EnterEdit();
+
+            // The previous level's warnings do not describe this one.
+            _warnings.Clear();
+
+            _status = $"opened {id}";
+        }
+
+        /// <summary>
+        /// Creates an empty room, writes it, lists it, and opens it. All three: a new level
+        /// that is not in the manifest is a draft nobody asked for.
+        /// </summary>
+        void CreateLevel()
+        {
+            string id = _newLevelId;
+
+            if (string.IsNullOrEmpty(id)) { _status = "a new level needs an id"; return; }
+            if (string.IsNullOrEmpty(_newWorldId)) { _status = "a new level needs a world id"; return; }
+
+            if (Host.Levels.TryLoad(id, out _)) { _status = $"'{id}' already exists"; return; }
+
+            var grid = new TileGrid();
+            grid.FillBorder();
+
+            var level = new LevelData
+            {
+                id = id,
+                name = id,
+                tiles = grid.ToRows(),
+            };
+
+            // List in the manifest BEFORE saving the file. The slot (world/index) is not
+            // knowable until the manifest says where the level landed; saving first would
+            // write world/index at their 0 default and the slot-drift lint would flag the
+            // level the instant it exists.
+            Session.AddLevel(id, _newWorldId);
+            Host.Levels.SaveIndex(Session.Index);
+            Session.MarkIndexSaved();
+
+            level.world = Session.Index.WorldNumberOf(id);
+            level.index = Session.Index.SlotOf(id) + 1;
+
+            Host.Levels.Save(id, level);
+
+            Open(id);
+
+            // Open() sets its own status on failure ("could not load ..."); only stamp ours
+            // over it when the open actually succeeded, so a real failure is what is seen.
+            if (LevelId == id) _status = $"created {id}";
+
+            _newLevelId = NextLevelId(id);
+        }
+
+        /// <summary>
+        /// The next obvious id to create, so the next click after a successful create does not
+        /// immediately report "already exists". Only advances a trailing number - an id with
+        /// none is left alone rather than inventing a naming scheme.
+        /// </summary>
+        static string NextLevelId(string id)
+        {
+            int i = id.Length;
+            while (i > 0 && char.IsDigit(id[i - 1])) i--;
+            if (i == id.Length) return id;
+
+            string prefix = id.Substring(0, i);
+            string digits = id.Substring(i);
+            int next = int.Parse(digits) + 1;
+            return prefix + next.ToString().PadLeft(digits.Length, '0');
         }
 
         // -------------------------------------------------------------------- gui
@@ -423,6 +527,8 @@ namespace KeepyUppy.LevelEditing
 
             DrawOverlays();
             DrawPanelToggle();
+
+            if (_showBrowser) DrawBrowser();
 
             if (_showPanel)
             {
@@ -749,11 +855,105 @@ namespace KeepyUppy.LevelEditing
             TileKind.PlayerLethal,
         };
 
+        /// <summary>
+        /// The manifest, as a list you can open, reorder and add to (spec: menus and the
+        /// level list). IMGUI, like every other dev panel - spec 2 is explicit that polish is
+        /// not built here.
+        /// </summary>
+        void DrawBrowser()
+        {
+            _browserRect = new Rect(8f, 60f, 300f, 420f);
+            GUILayout.BeginArea(_browserRect, GUI.skin.box);
+
+            GUILayout.Label($"levels{(Session.IndexDirty ? " *" : "")}");
+
+            // Fixed-height area with the seven-world roster the design calls for: without a
+            // scroll view, worlds past the first couple are simply unreachable.
+            _browserScroll = GUILayout.BeginScrollView(_browserScroll, GUILayout.Height(320f));
+
+            if (Session.Index.worlds != null)
+            {
+                foreach (LevelWorld world in Session.Index.worlds)
+                {
+                    if (world?.levels == null) continue;
+
+                    GUILayout.Space(4f);
+                    GUILayout.Label($"{world.id}  {world.name}");
+
+                    foreach (string id in new List<string>(world.levels)) DrawBrowserRow(id);
+                }
+            }
+
+            DrawDrafts();
+            GUILayout.EndScrollView();
+
+            GUILayout.Space(6f);
+            DrawNewLevelRow();
+
+            if (GUILayout.Button("save list"))
+            {
+                Host.Levels.SaveIndex(Session.Index);
+                Session.MarkIndexSaved();
+                _warnings = LevelIndexValidator.Validate(Session.Index, Host.Levels.List());
+                _status = "saved the level list";
+            }
+
+            GUILayout.EndArea();
+        }
+
+        void DrawBrowserRow(string id)
+        {
+            GUILayout.BeginHorizontal();
+
+            bool current = id == LevelId;
+            if (GUILayout.Button(current ? $"[{id}]" : id, GUILayout.Width(130f))) Open(id);
+
+            if (GUILayout.Button("^", GUILayout.Width(24f))) Session.MoveLevel(id, -1);
+            if (GUILayout.Button("v", GUILayout.Width(24f))) Session.MoveLevel(id, 1);
+            if (GUILayout.Button("unlist", GUILayout.Width(56f))) Session.RemoveLevel(id);
+
+            GUILayout.EndHorizontal();
+        }
+
+        /// <summary>
+        /// Files on disk the manifest does not list. Shown so a draft is discoverable rather
+        /// than invisible, with one click to put it in the game.
+        /// </summary>
+        void DrawDrafts()
+        {
+            List<string> drafts = Session.Index.DraftsAmong(Host.Levels.List());
+            if (drafts.Count == 0) return;
+
+            GUILayout.Space(4f);
+            GUILayout.Label("drafts");
+
+            foreach (string id in drafts)
+            {
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button(id, GUILayout.Width(130f))) Open(id);
+                if (GUILayout.Button("add to list", GUILayout.Width(90f)))
+                    Session.AddLevel(id, _newWorldId);
+                GUILayout.EndHorizontal();
+            }
+        }
+
+        void DrawNewLevelRow()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("new", GUILayout.Width(32f));
+            _newLevelId = GUILayout.TextField(_newLevelId, GUILayout.Width(90f));
+            _newWorldId = GUILayout.TextField(_newWorldId, GUILayout.Width(40f));
+
+            if (GUILayout.Button("create", GUILayout.Width(60f))) CreateLevel();
+
+            GUILayout.EndHorizontal();
+        }
+
         void DrawStatus()
         {
             string dirty = Session.Dirty ? "*" : "";
             GUI.Label(new Rect(12f, 8f, 900f, 20f),
-                      $"EDIT {LevelId}{dirty}   Tab play   U tools   G grid   H hitboxes   T safe area   Ctrl+S save   {_status}");
+                      $"EDIT {LevelId}{dirty}   Tab play   L levels   U tools   G grid   H hitboxes   T safe area   Ctrl+S save   {_status}");
 
             if (Session.SelectedEntityId != null)
                 GUI.Label(new Rect(12f, 28f, 700f, 20f), $"selected: {Session.SelectedEntityId}");

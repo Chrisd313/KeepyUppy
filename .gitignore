@@ -93,3 +93,6 @@ crashlytics-build.properties
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Subagent-driven development scratch (ledger, briefs, review packages)
+.superpowers/

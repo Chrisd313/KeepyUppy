@@ -1,0 +1,18 @@
+{
+    "version": 1,
+    "worlds": [
+        {
+            "id": "w1",
+            "name": "The Living Room",
+            "levels": [
+                "w1_02",
+                "w1_03"
+            ]
+        },
+        {
+            "id": "w2",
+            "name": "w2",
+            "levels": []
+        }
+    ]
+}
