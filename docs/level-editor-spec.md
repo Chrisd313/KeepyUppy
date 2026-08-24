@@ -213,6 +213,32 @@ can see.
 
 ---
 
+### The manifest — 2026-08-24, as built
+
+`levels/index.json` declares which levels are in the game and in what order:
+
+```json
+{
+    "version": 1,
+    "worlds": [
+        { "id": "w1", "name": "The Living Room", "levels": ["w1_01"] }
+    ]
+}
+```
+
+**The manifest is authoritative for ordering.** The `world` and `index` fields inside each
+level file are advisory and lint-checked against it; nothing reads them to decide what comes
+next.
+
+**A level on disk but absent from the manifest is a draft** — the editor opens it, the game
+does not list it. That is the capability a derived list cannot offer, and it is why this file
+exists rather than the game scanning the directory.
+
+`L` opens the level browser: open, create, reorder, unlist, and save the list. Unlisting
+never deletes the file.
+
+---
+
 ## 4. Editing
 
 ### Layout
@@ -255,6 +281,7 @@ Immediate-mode / debug UI only (Unity IMGUI, Godot Control nodes, or Dear ImGui)
 | `Delete` | Delete selection |
 | `Ctrl+Z / Ctrl+Y` | Undo / redo (flat 50-step stack, whole-level snapshots — the level is small, don't be clever) |
 | `Ctrl+S` | Save |
+| `L` | Open the level browser (open, create, reorder, unlist) |
 | `G` | Toggle grid overlay |
 | `H` | Toggle hitbox overlay (shows the asymmetric player-generous / hazard-stingy volumes) |
 | `T` | Toggle mobile safe-area overlay (thumb-occluded bottom corners) |

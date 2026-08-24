@@ -108,6 +108,11 @@ Abstract behind `ILevelSource`:
 
 JSON on disk is the source of truth. The packed manifest is a build artefact and is never hand-edited.
 
+Which levels are *in* the game is declared in `Assets/StreamingAssets/levels/index.json`, not
+derived from the directory. A level file absent from the manifest is a draft: the editor opens
+it, the game does not list it. The editor maintains the manifest — a declared list is only
+better than a derived one while the tooling keeps it current.
+
 ### The shipping game and the editor read the same JSON
 
 Never introduce a second level format. The moment they diverge, the editor stops being trustworthy.
