@@ -1,0 +1,16 @@
+{
+    "name": "KeepyUppy.Shell",
+    "rootNamespace": "KeepyUppy.Shell",
+    "references": [
+        "KeepyUppy.Sim"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

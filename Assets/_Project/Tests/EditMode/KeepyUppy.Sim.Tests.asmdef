@@ -6,6 +6,7 @@
         "KeepyUppy.Input",
         "KeepyUppy.LevelEditor",
         "KeepyUppy.Runtime",
+        "KeepyUppy.Shell",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

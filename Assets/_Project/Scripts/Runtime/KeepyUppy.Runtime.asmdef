@@ -6,6 +6,7 @@
         "KeepyUppy.Input",
         "KeepyUppy.Input.Devices",
         "KeepyUppy.LevelEditor",
+        "KeepyUppy.Shell",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],
