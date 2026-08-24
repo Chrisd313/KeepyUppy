@@ -120,6 +120,19 @@ namespace KeepyUppy.Runtime
             _levelSource = new FileLevelSource();
             _levelSource.SaveIfAbsent(StartingLevel, SeedLevel());
 
+            // The manifest decides what is in the game. Seeded alongside the level so a fresh
+            // clone has a coherent level list rather than a room nothing lists.
+            if (!_levelSource.TryLoadIndex(out LevelIndex index))
+            {
+                index = LevelIndex.Default();
+                _levelSource.SaveIndex(index);
+            }
+
+            // The starting level is the manifest's first, so adding a level before w1_01 in
+            // the editor changes what the game boots into - which is what a level list is for.
+            IReadOnlyList<string> listed = index.AllLevels();
+            if (listed.Count > 0) StartingLevel = listed[0];
+
             if (!_levelSource.TryLoad(StartingLevel, out LevelData level))
             {
                 Debug.LogWarning($"[level] '{StartingLevel}' not found; falling back to the seed room");

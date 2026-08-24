@@ -92,5 +92,20 @@ namespace KeepyUppy.SimTests
             Assert.DoesNotThrow(() => _source.TryLoadIndex(out _));
             Assert.IsFalse(_source.TryLoadIndex(out _));
         }
+
+        [Test]
+        public void TheSeededManifestAndTheSeededLevelAgree()
+        {
+            // SimBootstrap seeds w1_01 and the default manifest when the directory is empty.
+            // If those two disagree, a fresh clone boots into an empty game - which is a
+            // miserable first five minutes and entirely preventable here.
+            _source.SaveIndex(LevelIndex.Default());
+            _source.Save(SimBootstrap.StartingLevel, new LevelData());
+
+            Assert.IsTrue(_source.TryLoadIndex(out LevelIndex index));
+            CollectionAssert.Contains(index.AllLevels(), SimBootstrap.StartingLevel);
+
+            CollectionAssert.IsEmpty(LevelIndexValidator.Validate(index, _source.List()));
+        }
     }
 }
