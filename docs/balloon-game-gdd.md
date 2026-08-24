@@ -629,7 +629,7 @@ Placeholder direction only; not blocking.
 
 ## 15. Metagame & progression — WORKING
 
-- Level-select grid per world
+- Level-select grid per world — **built in phase B**, but shows only world and level names right now. No medals, times or death counts yet: those all read from save data, which is phase C. The grid and its cursor (`LevelSelectModel`) are ready for that data; nothing about the layout needs to change to add it.
 - Per-level death counter, displayed and never hidden
 - **Touch-count medal** — par per level, set from playtest metrics (§18), never from guesswork
 - Completion time tracked, shown, no leaderboard at launch
