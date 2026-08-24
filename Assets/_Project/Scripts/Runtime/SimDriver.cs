@@ -50,11 +50,25 @@ namespace KeepyUppy.Runtime
         /// </summary>
         public bool Paused { get; set; }
 
+        /// <summary>
+        /// How many fixed steps each render frame gets. Lives here and not in SimWorld
+        /// because the simulation must not be able to observe it (GDD 6.1).
+        /// </summary>
+        public TimeControl Speed { get; } = new TimeControl();
+
+        /// <summary>Set by the shell while the fast-forward control is held.</summary>
+        public bool FastForward { get; set; }
+
+        int _frame;
+
         void FixedUpdate()
         {
             if (Paused) return;
 
-            World.Tick();
+            Speed.Factor = FastForward ? World.Tuning.fastForwardFactor : 1;
+
+            int steps = Speed.StepsFor(_frame++);
+            for (int i = 0; i < steps; i++) World.Tick();
         }
     }
 }

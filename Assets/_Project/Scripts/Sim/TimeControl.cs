@@ -7,7 +7,7 @@ namespace KeepyUppy.Sim
     ///
     /// **The simulation must never be able to observe this.** GDD 6.1 fixes the timestep at
     /// a compile-time constant, so speed is expressed as the NUMBER of 60 Hz steps taken per
-    /// render frame — never a longer dt and never Time.timeScale. The same steps happen in
+    /// render frame — never a longer dt and never Unity's global timeScale. The same steps happen in
     /// the same order, so a fast-forwarded run is bit-identical to a normal one and the
     /// replay test cannot tell them apart.
     ///

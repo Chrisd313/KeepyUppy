@@ -142,6 +142,7 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(0.3f, b.minBounceSpeed, 1e-6f, "GDD 6.4 min_bounce_speed");
             Assert.AreEqual(24f, b.maxSpeed, 1e-6f, "GDD 6.4 max_speed");
             Assert.AreEqual(40f, b.aimOffsetMaxAngle, 1e-6f, "GDD 6.5 aim_offset_max_angle");
+            Assert.AreEqual(2, b.fastForwardFactor, "GDD 6.4 fast_forward_factor");
 
             PlayerTuning p = PlayerTuning.Default;
             Assert.AreEqual(6.0f, p.runSpeed, 1e-6f, "GDD 5.7 run speed");
