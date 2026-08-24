@@ -59,6 +59,27 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void ALevelListedInTwoDifferentWorldsIsAWarning()
+        {
+            // The easy regression: moving the `seen` HashSet inside the per-world loop would
+            // reset it for every world and miss exactly this case, while still catching a
+            // same-world duplicate.
+            var index = new LevelIndex
+            {
+                version = LevelIndex.CurrentVersion,
+                worlds = new[]
+                {
+                    new LevelWorld { id = "w1", name = "One", levels = new[] { "w1_01" } },
+                    new LevelWorld { id = "w2", name = "Two", levels = new[] { "w1_01" } },
+                },
+            };
+
+            List<string> warnings = LevelIndexValidator.Validate(index, new[] { "w1_01" });
+
+            Assert.IsTrue(warnings.Exists(w => w.Contains("w1_01") && w.Contains("more than once")));
+        }
+
+        [Test]
         public void AnEmptyWorldIsAWarning()
         {
             var index = new LevelIndex
@@ -68,6 +89,18 @@ namespace KeepyUppy.SimTests
 
             Assert.IsTrue(LevelIndexValidator.Validate(index, new string[0])
                               .Exists(w => w.Contains("no levels")));
+        }
+
+        [Test]
+        public void AManifestWithNoWorldsArrayIsAWarning()
+        {
+            // Not just an empty array - JsonUtility leaves worlds null for a manifest with no
+            // "worlds" key at all, and that must not throw either.
+            var index = new LevelIndex { worlds = null };
+
+            List<string> warnings = LevelIndexValidator.Validate(index, new string[0]);
+
+            Assert.IsTrue(warnings.Exists(w => w.Contains("no worlds")));
         }
 
         [Test]

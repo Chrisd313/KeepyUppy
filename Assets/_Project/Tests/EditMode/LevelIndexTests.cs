@@ -108,6 +108,17 @@ namespace KeepyUppy.SimTests
             Assert.DoesNotThrow(() => index.AllLevels());
             Assert.IsEmpty(index.AllLevels());
             Assert.IsFalse(index.Contains("anything"));
+
+            // worlds itself can be null too - JsonUtility leaves it that way for a manifest
+            // with no "worlds" key at all, not just an empty array.
+            var noWorlds = new LevelIndex { worlds = null };
+
+            Assert.DoesNotThrow(() => noWorlds.AllLevels());
+            Assert.IsEmpty(noWorlds.AllLevels());
+            Assert.IsFalse(noWorlds.Contains("anything"));
+            Assert.IsNull(noWorlds.WorldOf("anything"));
+            Assert.AreEqual(-1, noWorlds.SlotOf("anything"));
+            Assert.AreEqual(-1, noWorlds.WorldNumberOf("anything"));
         }
     }
 }

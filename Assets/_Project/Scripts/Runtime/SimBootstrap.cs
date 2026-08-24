@@ -40,7 +40,12 @@ namespace KeepyUppy.Runtime
         /// <summary>Profile loaded at startup. Change it to boot into a different feel.</summary>
         public static string StartingProfile = FileTuningSource.DefaultProfileName;
 
-        /// <summary>Level loaded at startup. Change it to boot into a different room.</summary>
+        /// <summary>
+        /// Level loaded at startup. The manifest is authoritative and overwrites this with its
+        /// first listed level whenever it lists anything (see LoadLevel below) — so changing
+        /// this constant only affects a genuinely fresh project with no manifest yet. To boot
+        /// into a different room, reorder the manifest instead.
+        /// </summary>
         public static string StartingLevel = "w1_01";
 
         SimDriver _driver;

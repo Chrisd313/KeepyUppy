@@ -43,6 +43,7 @@ namespace KeepyUppy.LevelEditing
         bool _showSafeArea;
         bool _showBrowser;
         Rect _browserRect;
+        Vector2 _browserScroll;
         string _newLevelId = "w1_02";
         string _newWorldId = "w1";
 
@@ -408,6 +409,7 @@ namespace KeepyUppy.LevelEditing
         {
             LevelData level = Session.Flush();
             _warnings = LevelValidator.Validate(level);
+            _warnings.AddRange(LevelIndexValidator.ValidateSlot(level, Session.Index));
 
             // Validation never blocks a save. A half-finished level must always be saveable.
             Host.Levels.Save(LevelId, level);
@@ -436,8 +438,13 @@ namespace KeepyUppy.LevelEditing
 
             LevelId = id;
             Session.Load(level);
-            Host.ApplyLevel(Session.Flush());
+
+            // EnterEdit applies the level itself; applying it here too would just be a
+            // duplicate ApplyLevel on the same frame.
             EnterEdit();
+
+            // The previous level's warnings do not describe this one.
+            _warnings.Clear();
 
             _status = $"opened {id}";
         }
@@ -451,6 +458,7 @@ namespace KeepyUppy.LevelEditing
             string id = _newLevelId;
 
             if (string.IsNullOrEmpty(id)) { _status = "a new level needs an id"; return; }
+            if (string.IsNullOrEmpty(_newWorldId)) { _status = "a new level needs a world id"; return; }
 
             if (Host.Levels.TryLoad(id, out _)) { _status = $"'{id}' already exists"; return; }
 
@@ -464,13 +472,43 @@ namespace KeepyUppy.LevelEditing
                 tiles = grid.ToRows(),
             };
 
-            Host.Levels.Save(id, level);
+            // List in the manifest BEFORE saving the file. The slot (world/index) is not
+            // knowable until the manifest says where the level landed; saving first would
+            // write world/index at their 0 default and the slot-drift lint would flag the
+            // level the instant it exists.
             Session.AddLevel(id, _newWorldId);
             Host.Levels.SaveIndex(Session.Index);
             Session.MarkIndexSaved();
 
+            level.world = Session.Index.WorldNumberOf(id);
+            level.index = Session.Index.SlotOf(id) + 1;
+
+            Host.Levels.Save(id, level);
+
             Open(id);
-            _status = $"created {id}";
+
+            // Open() sets its own status on failure ("could not load ..."); only stamp ours
+            // over it when the open actually succeeded, so a real failure is what is seen.
+            if (LevelId == id) _status = $"created {id}";
+
+            _newLevelId = NextLevelId(id);
+        }
+
+        /// <summary>
+        /// The next obvious id to create, so the next click after a successful create does not
+        /// immediately report "already exists". Only advances a trailing number - an id with
+        /// none is left alone rather than inventing a naming scheme.
+        /// </summary>
+        static string NextLevelId(string id)
+        {
+            int i = id.Length;
+            while (i > 0 && char.IsDigit(id[i - 1])) i--;
+            if (i == id.Length) return id;
+
+            string prefix = id.Substring(0, i);
+            string digits = id.Substring(i);
+            int next = int.Parse(digits) + 1;
+            return prefix + next.ToString().PadLeft(digits.Length, '0');
         }
 
         // -------------------------------------------------------------------- gui
@@ -829,6 +867,10 @@ namespace KeepyUppy.LevelEditing
 
             GUILayout.Label($"levels{(Session.IndexDirty ? " *" : "")}");
 
+            // Fixed-height area with the seven-world roster the design calls for: without a
+            // scroll view, worlds past the first couple are simply unreachable.
+            _browserScroll = GUILayout.BeginScrollView(_browserScroll, GUILayout.Height(320f));
+
             if (Session.Index.worlds != null)
             {
                 foreach (LevelWorld world in Session.Index.worlds)
@@ -843,6 +885,8 @@ namespace KeepyUppy.LevelEditing
             }
 
             DrawDrafts();
+            GUILayout.EndScrollView();
+
             GUILayout.Space(6f);
             DrawNewLevelRow();
 
