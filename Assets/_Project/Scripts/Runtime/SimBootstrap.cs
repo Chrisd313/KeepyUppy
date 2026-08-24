@@ -79,6 +79,8 @@ namespace KeepyUppy.Runtime
 
             gameObject.AddComponent<SimDebugOverlay>().Driver = _driver;
 
+            BuildShellView();
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             TuningPanel panel = gameObject.AddComponent<TuningPanel>();
             panel.Driver = _driver;
@@ -304,6 +306,20 @@ namespace KeepyUppy.Runtime
                 -1f
             );
             go.AddComponent<BalloonView>().Body = balloon;
+        }
+
+        /// <summary>
+        /// The shell starts on Title with the straight-to-level boot above already running
+        /// behind it (CLAUDE.md), so disabling this leaves the existing debug boot intact.
+        /// </summary>
+        void BuildShellView()
+        {
+            var go = new GameObject("Shell");
+            go.transform.SetParent(transform, false);
+
+            var shell = go.AddComponent<ShellView>();
+            shell.Driver = _driver;
+            shell.LevelSource = _levelSource;
         }
 
         void BuildPlayerView(PlayerBody player)
