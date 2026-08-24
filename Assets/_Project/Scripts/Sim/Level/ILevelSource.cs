@@ -27,5 +27,16 @@ namespace KeepyUppy.Sim.Level
 
         /// <summary>Writes the level. Throws if <see cref="CanSave"/> is false.</summary>
         void Save(string id, LevelData level);
+
+        /// <summary>
+        /// The manifest declaring which levels are in the game and in what order.
+        ///
+        /// False when there is no manifest yet, which is a normal state for a project with
+        /// levels and no list, not a failure.
+        /// </summary>
+        bool TryLoadIndex(out LevelIndex index);
+
+        /// <summary>Writes the manifest. Throws if <see cref="CanSave"/> is false.</summary>
+        void SaveIndex(LevelIndex index);
     }
 }
