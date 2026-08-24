@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KeepyUppy.Sim.Level;
 using NUnit.Framework;
 using UnityEngine;
@@ -42,6 +43,71 @@ namespace KeepyUppy.SimTests
 
             Assert.AreEqual(LevelIndex.CurrentVersion, index.version);
             CollectionAssert.Contains(index.worlds[0].levels, "w1_01");
+        }
+
+        static LevelIndex TwoWorlds() => new LevelIndex
+        {
+            version = LevelIndex.CurrentVersion,
+            worlds = new[]
+            {
+                new LevelWorld { id = "w1", name = "One", levels = new[] { "w1_02", "w1_01" } },
+                new LevelWorld { id = "w2", name = "Two", levels = new[] { "w2_01" } },
+            },
+        };
+
+        [Test]
+        public void OrderComesFromTheManifest_NotTheFilenames()
+        {
+            // The whole point. w1_02 is listed first, so it IS first, however it sorts.
+            LevelIndex index = TwoWorlds();
+
+            CollectionAssert.AreEqual(new[] { "w1_02", "w1_01", "w2_01" }, index.AllLevels());
+            Assert.AreEqual(0, index.SlotOf("w1_02"));
+            Assert.AreEqual(1, index.SlotOf("w1_01"));
+        }
+
+        [Test]
+        public void WorldLookupsFindTheOwningWorld()
+        {
+            LevelIndex index = TwoWorlds();
+
+            Assert.AreEqual("w2", index.WorldOf("w2_01").id);
+            Assert.AreEqual(2, index.WorldNumberOf("w2_01"), "world numbers are 1-based");
+            Assert.AreEqual(1, index.WorldNumberOf("w1_01"));
+        }
+
+        [Test]
+        public void AnUnlistedLevelIsAbsentEverywhere()
+        {
+            LevelIndex index = TwoWorlds();
+
+            Assert.IsFalse(index.Contains("w9_99"));
+            Assert.IsNull(index.WorldOf("w9_99"));
+            Assert.AreEqual(-1, index.SlotOf("w9_99"));
+            Assert.AreEqual(-1, index.WorldNumberOf("w9_99"));
+        }
+
+        [Test]
+        public void DraftsAreTheFilesTheManifestDoesNotList()
+        {
+            // A level being authored while the previous one is still under test. The editor
+            // opens it; the game does not list it.
+            LevelIndex index = TwoWorlds();
+
+            List<string> drafts = index.DraftsAmong(new[] { "w1_01", "w1_02", "w2_01", "scratch" });
+
+            CollectionAssert.AreEqual(new[] { "scratch" }, drafts);
+        }
+
+        [Test]
+        public void QueriesSurviveAMalformedManifest()
+        {
+            // A hand-edited file must never take the editor down.
+            var index = new LevelIndex { worlds = new[] { null, new LevelWorld { levels = null } } };
+
+            Assert.DoesNotThrow(() => index.AllLevels());
+            Assert.IsEmpty(index.AllLevels());
+            Assert.IsFalse(index.Contains("anything"));
         }
     }
 }

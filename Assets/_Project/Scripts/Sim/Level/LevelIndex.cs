@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KeepyUppy.Sim.Level
 {
@@ -45,6 +46,86 @@ namespace KeepyUppy.Sim.Level
                 },
             },
         };
+
+        /// <summary>Every listed level, in play order, across all worlds.</summary>
+        public IReadOnlyList<string> AllLevels()
+        {
+            var all = new List<string>();
+            if (worlds == null) return all;
+
+            foreach (LevelWorld world in worlds)
+            {
+                if (world?.levels == null) continue;
+
+                foreach (string id in world.levels)
+                    if (!string.IsNullOrEmpty(id)) all.Add(id);
+            }
+
+            return all;
+        }
+
+        public bool Contains(string id) => WorldOf(id) != null;
+
+        /// <summary>The world listing this level, or null. Malformed entries are skipped.</summary>
+        public LevelWorld WorldOf(string id)
+        {
+            if (string.IsNullOrEmpty(id) || worlds == null) return null;
+
+            foreach (LevelWorld world in worlds)
+            {
+                if (world?.levels == null) continue;
+
+                foreach (string listed in world.levels)
+                    if (listed == id) return world;
+            }
+
+            return null;
+        }
+
+        /// <summary>Position within its own world, 0-based. -1 when unlisted.</summary>
+        public int SlotOf(string id)
+        {
+            LevelWorld world = WorldOf(id);
+            if (world == null) return -1;
+
+            for (int i = 0; i < world.levels.Length; i++)
+                if (world.levels[i] == id) return i;
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Which world this is, counting from 1 - the number a level file's `world` field is
+        /// expected to match, and what the lint compares against.
+        /// </summary>
+        public int WorldNumberOf(string id)
+        {
+            LevelWorld owner = WorldOf(id);
+            if (owner == null) return -1;
+
+            for (int i = 0; i < worlds.Length; i++)
+                if (ReferenceEquals(worlds[i], owner)) return i + 1;
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Files present on disk that the manifest does not list - drafts. Order follows the
+        /// input, so a sorted listing in gives a sorted listing out.
+        /// </summary>
+        public List<string> DraftsAmong(IReadOnlyList<string> onDisk)
+        {
+            var drafts = new List<string>();
+            if (onDisk == null) return drafts;
+
+            foreach (string id in onDisk)
+            {
+                if (string.IsNullOrEmpty(id) || id == FileName) continue;
+                if (!Contains(id)) drafts.Add(id);
+            }
+
+            return drafts;
+        }
     }
 
     /// <summary>One world and its levels, in play order (GDD 12).</summary>
