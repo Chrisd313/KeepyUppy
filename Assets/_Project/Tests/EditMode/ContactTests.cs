@@ -227,7 +227,7 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(Mathf.Sqrt(2f * t.gravity * t.jumpHeightTiles), t.JumpVelocity, 1e-4f);
 
             t.jumpHeightTiles = 4.0f;
-            Assert.AreEqual(Mathf.Sqrt(2f * 9.8f * 4.0f), t.JumpVelocity, 1e-4f);
+            Assert.AreEqual(Mathf.Sqrt(2f * t.gravity * 4.0f), t.JumpVelocity, 1e-4f);
         }
 
         [Test]

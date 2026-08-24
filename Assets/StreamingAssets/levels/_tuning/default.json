@@ -1,13 +1,13 @@
 {
     "name": "default",
     "balloon": {
-        "gravity": 4.897959232330322,
-        "dragKy": 0.5714285969734192,
-        "dragKx": 0.8999999761581421,
+        "gravity": 1.0,
+        "dragKy": 0.25,
+        "dragKx": 0.09000000357627869,
         "restitutionWall": 0.75,
         "restitutionPlayerPassive": 0.5,
         "minBounceSpeed": 0.30000001192092898,
-        "maxSpeed": 16.0,
+        "maxSpeed": 24.0,
         "bumpVelocity": 20.0,
         "bumpInheritY": 0.3499999940395355,
         "bumpInheritX": 0.5,
@@ -29,7 +29,7 @@
     "player": {
         "runSpeed": 6.0,
         "jumpHeightTiles": 3.200000047683716,
-        "gravity": 9.800000190734864,
+        "gravity": 40.0,
         "terminalFallSpeed": 18.0,
         "coyoteFrames": 6,
         "jumpBufferFrames": 10,

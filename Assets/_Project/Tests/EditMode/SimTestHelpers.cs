@@ -1,6 +1,7 @@
 using System;
 using KeepyUppy.InputLayer;
 using KeepyUppy.Sim;
+using KeepyUppy.Sim.Entities;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -26,6 +27,15 @@ namespace KeepyUppy.SimTests
         public int jumpBufferFrames;
         public bool grounded;
         public bool isDead;
+        public bool isWon;
+
+        /// <summary>
+        /// Entity state, folded to one value per field so the snapshot does not have to know
+        /// how many entities a room has. Motion is derived from the step counter, but
+        /// position is captured anyway: it is what a path bug would show up in.
+        /// </summary>
+        public int entityPositions;
+        public int entityExposure;
 
         public static SimSnapshot Capture(SimWorld w) => new SimSnapshot
         {
@@ -43,7 +53,36 @@ namespace KeepyUppy.SimTests
             jumpBufferFrames = w.Player.JumpBufferFrames,
             grounded = w.Player.Grounded,
             isDead = w.IsDead,
+            isWon = w.IsWon,
+            entityPositions = FoldPositions(w.Entities),
+            entityExposure = FoldExposure(w.Entities),
         };
+
+        static int FoldPositions(EntityField entities)
+        {
+            unchecked
+            {
+                int hash = (int)2166136261;
+                for (int i = 0; i < entities.Count; i++)
+                {
+                    hash = (hash ^ SimTestHelpers.Bits(entities[i].Position.x)) * 16777619;
+                    hash = (hash ^ SimTestHelpers.Bits(entities[i].Position.y)) * 16777619;
+                }
+                return hash;
+            }
+        }
+
+        static int FoldExposure(EntityField entities)
+        {
+            unchecked
+            {
+                int hash = (int)2166136261;
+                for (int i = 0; i < entities.Count; i++)
+                    hash = (hash ^ entities[i].ExposureFrames) * 16777619;
+
+                return hash;
+            }
+        }
 
         public void AssertMatches(in SimSnapshot other, string context)
         {
@@ -64,6 +103,9 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(jumpBufferFrames, other.jumpBufferFrames, $"{context}: jumpBufferFrames");
             Assert.AreEqual(grounded, other.grounded, $"{context}: grounded");
             Assert.AreEqual(isDead, other.isDead, $"{context}: isDead");
+            Assert.AreEqual(isWon, other.isWon, $"{context}: isWon");
+            Assert.AreEqual(entityPositions, other.entityPositions, $"{context}: entity positions");
+            Assert.AreEqual(entityExposure, other.entityExposure, $"{context}: entity exposure");
         }
 
         static void AssertBits(float a, float b, string message)
@@ -94,6 +136,31 @@ namespace KeepyUppy.SimTests
             world.Air.Add(new AirZone("z_up", new Rect(6f, 1f, 8f, 12f), new Vector2(1.5f, 5f)));
             world.Air.Add(new AirZone("z_cross", new Rect(10f, 4f, 12f, 6f), new Vector2(-3f, 1f)));
             world.Air.Add(new AirZone("z_off", new Rect(0f, 0f, 32f, 18f), new Vector2(99f, 99f), false));
+
+            // A mover, an accumulator and a wind source: the three shapes of entity state
+            // that determinism can break on. Placed clear of the balloon's opening arc so
+            // the run is long enough to be worth hashing.
+            world.Entities.Clear();
+            world.Entities.Add(new SimEntity
+            {
+                Id = "saw", Kind = EntityKind.Saw, Radius = 0.6f, Speed = 3f,
+                Mode = PathMode.PingPong, Phase = 0.25f,
+                Points = new[] { new Vector2(20f, 8f), new Vector2(28f, 8f) },
+            }, world.Air);
+
+            world.Entities.Add(new SimEntity
+            {
+                Id = "lamp", Kind = EntityKind.Lamp, Radius = 0.6f, Length = 6f,
+                Angle = 270f, Duration = 4f,
+                Points = new[] { new Vector2(15f, 16f) },
+            }, world.Air);
+
+            world.Entities.Add(new SimEntity
+            {
+                Id = "fan", Kind = EntityKind.Fan, Radius = 1.2f, Length = 5f,
+                Angle = 90f, Power = 4f, Speed = 2f, Mode = PathMode.Loop,
+                Points = new[] { new Vector2(4f, 2f), new Vector2(12f, 2f) },
+            }, world.Air);
 
             world.Balloon.Radius = InflationBands.RadiusOf(InflationBand.Nominal);
             world.Configure(new Vector2(8.3f, 12.1f), new Vector2(2.7f, -1.3f),
@@ -167,6 +234,8 @@ namespace KeepyUppy.SimTests
                     hash = Fold(hash, Bits(s.playerX));
                     hash = Fold(hash, Bits(s.playerY));
                     hash = Fold(hash, s.touchCount);
+                    hash = Fold(hash, s.entityPositions);
+                    hash = Fold(hash, s.entityExposure);
                 }
                 return hash;
             }

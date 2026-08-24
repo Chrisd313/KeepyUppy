@@ -19,11 +19,19 @@ namespace KeepyUppy.LevelEditing
         /// <summary>4 — phase 4.</summary>
         Zone = 4,
 
-        /// <summary>5 — phase 4.</summary>
+        /// <summary>5 — click adds a waypoint, drag moves one, right-click deletes.</summary>
         Path = 5,
 
         /// <summary>6 — phase 4.</summary>
         Link = 6,
+
+        /// <summary>
+        /// P — click drops the palette entity where the cursor is.
+        ///
+        /// Numbered past the reserved phase-4 tools rather than taking 4, so the digit
+        /// bindings still mean what spec 4 says they mean when zones and links arrive.
+        /// </summary>
+        Place = 7,
     }
 
     public enum EditorMode

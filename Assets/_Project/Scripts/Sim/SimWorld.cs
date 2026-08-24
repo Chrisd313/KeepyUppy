@@ -1,4 +1,5 @@
 using KeepyUppy.InputLayer;
+using KeepyUppy.Sim.Entities;
 using UnityEngine;
 
 namespace KeepyUppy.Sim
@@ -17,6 +18,12 @@ namespace KeepyUppy.Sim
         public readonly BalloonBody Balloon = new BalloonBody();
         public readonly PlayerBody Player = new PlayerBody();
         public readonly PlayerVerbs Verbs = new PlayerVerbs();
+
+        /// <summary>Moving hazards (GDD 9). Empty until a level supplies some.</summary>
+        public readonly EntityField Entities = new EntityField();
+
+        /// <summary>The way out (GDD 3, 7.4). Absent in the physics-only test rooms.</summary>
+        public ExitGate Exit = ExitGate.None;
 
         public BalloonTuning Tuning = BalloonTuning.Default;
         public PlayerTuning PlayerTuning = PlayerTuning.Default;
@@ -51,6 +58,17 @@ namespace KeepyUppy.Sim
         /// <summary>GDD 15: displayed and never hidden. Deliberately survives a restart.</summary>
         public int DeathCount { get; private set; }
 
+        /// <summary>
+        /// The balloon is through the gate. The room is over and the sim is holding still.
+        /// </summary>
+        public bool IsWon { get; private set; }
+
+        /// <summary>Rooms completed. Survives a restart, as the death count does.</summary>
+        public int WinCount { get; private set; }
+
+        /// <summary>Touches taken on the winning run (GDD 15's medal number).</summary>
+        public int WinningTouches { get; private set; }
+
         /// <summary>GDD 15's touch count. Active hits only; passive contacts never count.</summary>
         public int TouchCount => Hits?.TouchCount ?? 0;
 
@@ -61,6 +79,7 @@ namespace KeepyUppy.Sim
         Vector2 _balloonSpawnVelocity;
         Vector2 _playerSpawn;
         int _deathFrames;
+        int _winFrames;
 
         public SimWorld()
         {
@@ -111,12 +130,20 @@ namespace KeepyUppy.Sim
             Hits.Tuning = Tuning;
             Hits.Reset();
 
+            // Entity motion is derived from the step counter, so this only clears the state
+            // that genuinely accumulates — a lamp's exposure (EntityPath).
+            Entities.Reset();
+            Entities.Step(0, Air);
+
             Input?.ResetIntents();
 
             IsDead = false;
             LastDeath = DeathCause.None;
             LastContacts = 0;
             _deathFrames = 0;
+
+            IsWon = false;
+            _winFrames = 0;
         }
 
         /// <summary>
@@ -162,9 +189,24 @@ namespace KeepyUppy.Sim
                 return;
             }
 
+            if (IsWon)
+            {
+                // Held, not frozen forever: with one room and no room list yet, the only
+                // "next room" available is this one again. Where a level sequence lands, this
+                // is the hook it replaces.
+                _winFrames++;
+                if (_winFrames >= WinHoldFrames) { Restart(); return; }
+                Clock.Advance();
+                return;
+            }
+
             // BalloonTuning is a value type, so the resolver holds a copy. Refresh it each
             // step or a live tuning-panel edit would never reach ApplyHit.
             Hits.Tuning = Tuning;
+
+            // Hazards move before either body does, so a saw and the balloon it catches are
+            // contemporaries rather than a frame apart.
+            Entities.Step(step, Air);
 
             if (HasPlayer) StepPlayer();
             if (!IsDead) StepBalloon();
@@ -175,6 +217,11 @@ namespace KeepyUppy.Sim
                 Verbs.Step(Input, Profile, Balloon, Player, Hits, Tuning);
             }
 
+            // Last, so a balloon that reaches the gate and a hazard on the same step dies.
+            // The level is allowed the last word; GDD 8's generosity is in the accept volume,
+            // not in letting a pop be overridden by arriving.
+            if (!IsDead) CheckExit();
+
             Clock.Advance();
         }
 
@@ -183,12 +230,42 @@ namespace KeepyUppy.Sim
             for (int i = 0; i < steps; i++) Tick();
         }
 
+        /// <summary>How long the win is held before the room resets. One second.</summary>
+        public const int WinHoldFrames = 60;
+
+        /// <summary>
+        /// GDD 3: land it in the exit, next room.
+        ///
+        /// A balloon too big for the gate passes over it rather than bouncing off the rim.
+        /// That is deliberate while inflation is unimplemented: the radius is fixed at spawn,
+        /// so a gate too small is an unwinnable level rather than a moment of play, and the
+        /// validator says so on save. When inflation lands (GDD 7.2), a too-large balloon
+        /// meeting a gate becomes a real event and this is where it gets a collision.
+        /// </summary>
+        void CheckExit()
+        {
+            if (IsWon || !Exit.Present) return;
+            if (!Exit.Accepts(Balloon.Position, Balloon.Radius, Tuning.exitAcceptBonus)) return;
+
+            IsWon = true;
+            _winFrames = 0;
+            WinCount++;
+            WinningTouches = TouchCount;
+        }
+
         void StepPlayer()
         {
             Player.Step(PlayerTuning, Input, Grid);
 
             if (Hazards.PlayerOverlapsLethal(Grid, Player.Position, Player.HalfWidth,
                                              Player.HalfHeight, Tuning.hazardPopRadiusShrink))
+            {
+                Kill(DeathCause.PlayerHitHazard);
+                return;
+            }
+
+            if (Entities.ResolvePlayer(Player.Position, Player.HalfWidth, Player.HalfHeight,
+                                       Tuning.hazardPopRadiusShrink))
             {
                 Kill(DeathCause.PlayerHitHazard);
                 return;
@@ -218,6 +295,15 @@ namespace KeepyUppy.Sim
 
             if (Hazards.BalloonOverlapsLethal(Grid, Balloon.Position, Balloon.Radius,
                                               Tuning.hazardPopRadiusShrink))
+            {
+                Kill(DeathCause.BalloonHitHazard);
+                return;
+            }
+
+            // Runs even on the step the balloon dies to something else: a lamp's exposure is
+            // aged inside, and skipping it would make the count depend on the death order.
+            if (Entities.ResolveBalloon(Balloon.Position, Balloon.Radius,
+                                        Tuning.hazardPopRadiusShrink))
             {
                 Kill(DeathCause.BalloonHitHazard);
                 return;

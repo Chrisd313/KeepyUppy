@@ -250,7 +250,7 @@ Starting values. Every one of these is a slider in the tuning panel (§18).
 |---|---|---|
 | `gravity` | 1.0 m/s² | **No longer shared with the player** (who runs at 40). Read it as net weight after buoyancy. Tuned 2026-08-22, was 9.8. |
 | `drag_ky` | 0.25 | → terminal fall ≈ 2.0 m/s at Nominal, unchanged. Tuned 2026-08-22, was 2.45. |
-| `drag_kx` | 0.9 | drifts ~3–4 tiles before settling |
+| `drag_kx` | 0.09 | drifts ~3–4 tiles before settling. Tuned 2026-08-24, was 0.9 — see below. |
 | Player terminal fall | ~18 m/s | the contrast *is* the feel |
 | `restitution_wall` | 0.75 | |
 | `restitution_player_passive` | 0.5 | see Law 4.2 |
@@ -261,7 +261,7 @@ Starting values. Every one of these is a slider in the tuning panel (§18).
 | `spike_speed` | 14.0 | 0.6 s cooldown, screen shake |
 | `aim_offset_max_angle` | 40° | see §6.5 |
 | `min_bounce_speed` | 0.3 m/s | below this, no bounce — kills jitter |
-| `max_speed` | 16 m/s | tunnelling guard |
+| `max_speed` | 24 m/s | sanity guard; collision is swept (6.1), so this is not what prevents tunnelling. Raised 2026-08-24 from 16, which silently capped `bump_velocity`. |
 | `aim_side_angle` | 55° | §5.5 aim table, left/right off vertical |
 | `aim_up_power_bonus` | +15% | §5.5 aim table, straight up |
 | `context_hold_frames` | 9 (150 ms) | §5.5 tap/hold split: under = palm, over = spike charge |
@@ -271,6 +271,7 @@ Starting values. Every one of these is a slider in the tuning panel (§18).
 | `active_contact_min_player_vy` | 1.0 m/s | **LOCKED §4.2 threshold.** Above this, or a jump pressed inside the buffer, contact is active. Below both, it is passive. |
 | `player_bump_radius_bonus` | +0.15 m | §8 — player's bump volume, larger than the balloon's visual |
 | `hazard_pop_radius_shrink` | −0.15 m | §8 — every hazard's pop volume, smaller than its visual |
+| `exit_accept_bonus` | +0.15 m | §8 — the exit's accept volume, larger than its visual. The generous mirror of the row above; tuned separately because generosity at the goal and cruelty at the hazards are different feelings. Added 2026-08-24. |
 
 Rows below `max_speed` added 2026-08-22: numbers §5.4, §5.5 and §8 describe in words but never quantified.
 
@@ -288,6 +289,14 @@ so raising `bump_velocity` alone is nearly useless — reaching 2 m of rise at t
 With drag that low, `bump_velocity` becomes a real lever again, hence 9.0 → 20.0. **Retune the drag pair before the bump speed, not after** — at the old drag the bump slider does almost nothing.
 
 Watch this against §4.3: gravity is the clock, and a very low balloon gravity weakens the room's time pressure. This is the knob to check first if levels start feeling slack.
+
+#### Why `drag_kx` and `max_speed` followed — 2026-08-24
+
+Two consequences of the 2026-08-22 retune that the tables did not catch at the time.
+
+**`drag_kx` had to fall with `drag_ky`.** §6.3's split is *vertical drag high, horizontal drag low* — that asymmetry is what lets the balloon cross the room instead of stalling above where it was hit. Dropping `drag_ky` 2.45 → 0.25 while leaving `drag_kx` at 0.9 inverted it: horizontal drag became 3.6× vertical, the exact opposite of the rule. Restoring the original 0.9 : 2.45 ratio against the new `drag_ky` gives 0.09. **Whenever `drag_ky` moves, check `drag_kx` against it** — the ratio is the design, not either number.
+
+**`max_speed` was silently eating the bump.** `ApplyHit` clamps total speed, so `bump_velocity` 20 left the balloon at 16 — the slider did nothing above the ceiling, and a *running* bump lost inherited horizontal too, because the clamp scales the whole vector rather than truncating one axis (3.0 → 2.37 m/s at run speed). Raised to 24. This is safe because §6.1 collision is swept: the cast finds the wall wherever it is, so `max_speed` is a sanity bound on the tuning panel, not the tunnelling defence. The tunnelling test runs at whatever `max_speed` currently is, so it re-verifies the new ceiling automatically.
 
 **Set velocity, don't add force.** Adding means a bump's outcome depends on the balloon's incoming velocity, so the same input produces different results. Poison for a memorisation game.
 
@@ -348,6 +357,31 @@ The level ends by putting the balloon through a gate of a specific diameter. A w
 
 **The shape of the exit states the level's answer, visually, on a single screen.** This is what turns inflation from a modifier into the goal.
 
+#### Implementation — 2026-08-24
+
+The gate is a **fit test**: `balloon diameter <= exit diameter`, judged on the balloon's
+centre being inside the aperture. A slot is measured on its *height*, which is the whole
+point of a letterbox — being wide does not help you through it. Position is what makes a
+ceiling ring demand buoyancy; the diameter alone never encodes height.
+
+`required_band` stays **derived** from the diameter and is never read by the simulation. The
+editor recomputes it whenever the diameter changes, and the validator warns if a hand-edited
+file disagrees, so the level-select icon cannot lie.
+
+A balloon too large **passes over the gate** rather than bouncing off the rim. That is
+deliberate only while inflation is unimplemented: the radius is fixed at spawn, so a gate
+too small is an unwinnable level rather than a moment of play, and the validator says so on
+save. **When §7.2 inflation lands, a too-large balloon meeting a gate becomes a real event
+and needs a collision** — `SimWorld.CheckExit` is where that goes.
+
+Death beats arrival on the same step. §8's generosity lives in the accept volume, not in
+letting a pop be overridden by arriving.
+
+The win is held for 60 frames and then the room restarts, because there is no room list to
+advance to yet. That hold is the hook a level sequence replaces.
+
+---
+
 ### 7.5 Readability — LOCKED
 
 No HUD bar. The balloon *is* the readout:
@@ -397,6 +431,43 @@ Spikes, saws, crushers, moving platforms, disappearing floors, conveyors, ice, o
 | **Water** | Safe landing — the balloon floats. Comes out wet: heavier, falls fast until dry | Relief valve that costs something |
 | **Vacuum intakes / fans** | `v_air` zones; hazard when on, tool when switchable, puzzle when timed | Best dual-purpose object in the game |
 | **The false exit** | Slides two tiles left as the balloon arrives | Mandatory |
+
+### 9.2a Implementation — 2026-08-24
+
+Three of the above are simulated: **saw** (generic tier, path-following, lethal to both),
+**lamp** (the sunbeam; sustained exposure pops the balloon) and **fan** (an air zone, not a
+wind system of its own — GDD 6.2 has only one). The cat is deferred: "tracks, waits, lunges"
+is a behaviour tree, and it wants the mover working underneath it first.
+
+**Entity position is a pure function of the step counter**, evaluated from scratch each step
+rather than advanced by `+= v * dt`. That single decision means attempt 40 replays attempt 1
+by construction rather than by care (6.1), makes restart free — there is no motion state to
+unwind, so the 8 budget is untouched — and lets any step be asked for out of order, which is
+what the spec's phase-5 rewind and ghost trails will need. Anything that *cannot* be written
+this way carries explicit state and must join the replay-equality test in the same commit;
+the lamp's exposure is the first such case.
+
+Kill volumes are capsules — a segment plus a radius — so a saw is a zero-length one and a
+lamp beam is a long one. One shape means the 8 fairness shrink has a single call site, as it
+does for tiles.
+
+Lamp exposure is **unbroken**: leaving the beam resets it. A countdown that remembered you
+would force leaving the room rather than moving within it, which is a different and worse
+hazard than the one 9.2 describes.
+
+Entities are **lethal but passable** for now. A saw kills what touches it; nothing pushes a
+body. Crushers and moving platforms need moving-solid collision, and "what happens when a
+platform pushes you into a spike" is a design question rather than a coding one — its own
+session, alongside the triggers and links 9.3 needs.
+
+`start_state: dormant` is honoured now, so a level authored with a dormant hazard behaves;
+nothing arms it yet, because triggers do not exist.
+
+An entity type this build does not understand loads inert and is counted, never dropped. A
+level file outlives any one build, and an editor that silently deletes what it cannot parse
+is not trustworthy.
+
+---
 
 ### 9.3 Betrayal traps
 
@@ -738,4 +809,6 @@ Independent of premise, and bigger than it looks. A face makes every pop hurt, m
 | 2026-08-22 | **Dropped URP for the built-in render pipeline** | Worth 6.31 MB of an 11.81 MB WebGL payload — 3.51 MB of it wasm, not assets. The game draws untextured quads through a single unlit shader; URP's post-processing kit (film grain, blue noise, SMAA, UberPost) was the entire asset payload, and it forced the physics and terrain modules back into the build. Taken now rather than after the art pass, when it would have been far more expensive. Cost: no 2D lights without reversing this. |
 | 2026-08-22 | Unity splash disabled, managed stripping High, engine code stripping on, WebGL exceptions off | §17.2 mitigations. Applied as code in `WebGLBuild.ConfigureForWeb` rather than as editor settings, so the shipping configuration is version-controlled and reproducible. Exceptions-off is a real tradeoff: smallest and fastest, but a runtime error in the wild is much harder to diagnose. Revisit before public release. |
 | 2026-08-22 | Package manifest cut from 44 to 16 | "Remove every unused package" (§17.2). Physics **and Physics2D** both went — the balloon and player are hand-integrated with custom swept collision per §6.1, so Unity physics was never used at all. uGUI went with URP; the dev panels are IMGUI. |
+| 2026-08-24 | **Entity motion is derived from the step counter, never accumulated** | `position = f(step)` makes GDD 6.1 replay-equality structural rather than a thing to be careful about, costs nothing at restart, and is what later makes rewind and ghost trails (spec phase 5) possible at all. The constraint it imposes — reactive hazards like the cat need explicit state and explicit test coverage — is the price, and it is worth paying. |
+| 2026-08-24 | Moving hazards are lethal but passable; nothing pushes a body yet | Crushers and moving platforms need moving-solid collision, which raises a design question (a platform pushing the player into a spike) rather than only an implementation one. Deferred to the session that also does triggers and links, since GDD 9.3 needs both. |
 | 2026-08-22 | Hazard tiles block whatever they do *not* kill, and are transparent to whatever they do | A tile cannot both stop a body and pop it: collision holds the body outside, so the §8-mandated *smaller-than-visual* kill volume would never be reached. The balloon flies into a spike and pops; the player lands on the same spike and is killed by a volume that bleeds slightly through its surface. |

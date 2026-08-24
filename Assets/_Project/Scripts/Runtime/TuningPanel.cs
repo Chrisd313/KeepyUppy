@@ -273,14 +273,14 @@ namespace KeepyUppy.Runtime
 
             // While the box has focus its text belongs to the typist. Otherwise it mirrors
             // the value, so dragging the slider updates the number and vice versa.
-            if (!editing) _text[knob.index] = TuningValue.Format(current, knob.integer);
+            if (!editing) _text[knob.index] = DevNumber.Format(current, knob.integer);
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(knob.label, GUILayout.Width(186f));
 
             // Range widened to contain the current value, so a typed number outside the
             // guessed range is not yanked back inside on the next frame.
-            TuningValue.SliderRange(current, knob.min, knob.max, out float low, out float high);
+            DevNumber.SliderRange(current, knob.min, knob.max, out float low, out float high);
 
             float dragged = GUILayout.HorizontalSlider(current, low, high, GUILayout.Width(96f));
             if (knob.integer) dragged = Mathf.Round(dragged);
@@ -297,7 +297,7 @@ namespace KeepyUppy.Runtime
 
                 // Partial input ("", "-", "2.") simply does not apply yet. The text stays as
                 // typed rather than snapping back, so the field is usable mid-keystroke.
-                if (TuningValue.TryParse(typed, knob.integer, out float parsed)) knob.set(parsed);
+                if (DevNumber.TryParse(typed, knob.integer, out float parsed)) knob.set(parsed);
                 return;
             }
 
