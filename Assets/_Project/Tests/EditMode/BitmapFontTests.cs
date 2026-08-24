@@ -54,10 +54,21 @@ namespace KeepyUppy.SimTests
         [Test]
         public void RowsMatchesTheBriefsWorkedExampleForA()
         {
-            // GlyphsFitTheirCell cannot fail by construction - this is the assertion that
-            // would actually catch a transposed or mirrored font. Pinned against the brief's
-            // own worked example: row 0 at the top, bit 4 at the left.
+            // GlyphsFitTheirCell cannot fail by construction - this pins the row order against
+            // the brief's own worked example: row 0 at the top, bit 4 at the left. Every row of
+            // 'A' is a palindrome, though, so this alone would not catch a horizontal mirror -
+            // see RowsCatchesAHorizontalMirrorUsingF below.
             Assert.AreEqual(0b01110_10001_10001_11111_10001_10001_10001UL, BitmapFont.Rows('A'));
+        }
+
+        [Test]
+        public void RowsCatchesAHorizontalMirrorUsingF()
+        {
+            // 'A's rows are all palindromes, so reversing bit 4 and bit 0 columnwise would
+            // leave BitmapFont.Rows('A') unchanged and a mirrored font would still pass the
+            // test above. 'F' is not row-palindromic ("10000" != "00001"), so this value would
+            // change under a horizontal mirror and actually exercises the column direction.
+            Assert.AreEqual(0b11111_10000_10000_11110_10000_10000_10000UL, BitmapFont.Rows('F'));
         }
 
         [Test]
