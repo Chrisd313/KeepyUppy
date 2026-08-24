@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using KeepyUppy.Sim;
+using KeepyUppy.Sim.Entities;
 using KeepyUppy.Sim.Level;
 using UnityEngine;
 
@@ -204,6 +205,165 @@ namespace KeepyUppy.LevelEditing
             if (SelectedEntityId == id) SelectedEntityId = null;
             Dirty = true;
             return true;
+        }
+
+        // -------------------------------------------------------------- properties
+
+        /// <summary>
+        /// Retypes an entity in place, keeping its id, position and path.
+        ///
+        /// Params are deliberately NOT cleared: a saw's speed is a fan's speed, and losing a
+        /// tuned number to a mistyped click is worse than carrying a stale one that the
+        /// inspector no longer shows.
+        /// </summary>
+        public void SetEntityType(string id, string type)
+        {
+            LevelEntity entity = FindEntity(id);
+            if (entity == null || entity.type == type) return;
+
+            entity.type = type;
+            Dirty = true;
+        }
+
+        public void SetParam(string id, EntityParamId param, float value)
+        {
+            LevelEntity entity = FindEntity(id);
+            if (entity == null) return;
+
+            entity.@params = entity.@params ?? new EntityParams();
+            if (Mathf.Approximately(EntityFields.Get(entity.@params, param), value)) return;
+
+            EntityFields.Set(entity.@params, param, value);
+            Dirty = true;
+        }
+
+        public float GetParam(string id, EntityParamId param)
+        {
+            LevelEntity entity = FindEntity(id);
+            return entity == null ? 0f : EntityFields.Get(entity.@params, param);
+        }
+
+        public void SetPathMode(string id, string mode)
+        {
+            LevelEntity entity = FindEntity(id);
+            if (entity == null || entity.path_mode == mode) return;
+
+            entity.path_mode = mode;
+            Dirty = true;
+        }
+
+        public void SetStartState(string id, string state)
+        {
+            LevelEntity entity = FindEntity(id);
+            if (entity == null || entity.start_state == state) return;
+
+            entity.start_state = state;
+            Dirty = true;
+        }
+
+        public void SetPhase(string id, float phase)
+        {
+            LevelEntity entity = FindEntity(id);
+            if (entity == null) return;
+
+            // Wrapped rather than clamped: phase is a fraction of a cycle, so 1.2 and 0.2 are
+            // the same trap and an author typing either means the same thing.
+            float wrapped = phase - Mathf.Floor(phase);
+            if (Mathf.Approximately(entity.phase, wrapped)) return;
+
+            entity.phase = wrapped;
+            Dirty = true;
+        }
+
+        // --------------------------------------------------------------- waypoints
+
+        /// <summary>
+        /// Waypoints of an entity, as points. The entity's own position is waypoint 0 and is
+        /// not stored in the path — the same convention EntityPath.FromFlat uses, so what the
+        /// editor draws and what the sim walks can never disagree.
+        /// </summary>
+        public Vector2[] Waypoints(string id)
+        {
+            LevelEntity entity = FindEntity(id);
+            if (entity?.pos == null || entity.pos.Length < 2) return new Vector2[0];
+
+            return EntityPath.FromFlat(new Vector2(entity.pos[0], entity.pos[1]), entity.path);
+        }
+
+        public int WaypointCount(string id)
+        {
+            LevelEntity entity = FindEntity(id);
+            return entity?.path == null ? 0 : entity.path.Length / 2;
+        }
+
+        public void AddWaypoint(string id, Vector2 world)
+        {
+            LevelEntity entity = FindEntity(id);
+            if (entity == null) return;
+
+            Vector2 snapped = GridCursor.SnapHalfTile(world);
+            var path = new List<float>(entity.path ?? new float[0]) { snapped.x, snapped.y };
+
+            entity.path = path.ToArray();
+            Dirty = true;
+        }
+
+        /// <summary>
+        /// Moves waypoint <paramref name="index"/>, where 0 is the entity itself. Dragging
+        /// waypoint 0 moves the entity, which is what an author expects from the handle
+        /// sitting on top of it.
+        /// </summary>
+        public void MoveWaypoint(string id, int index, Vector2 world)
+        {
+            LevelEntity entity = FindEntity(id);
+            if (entity == null) return;
+
+            if (index <= 0) { MoveEntity(id, world); return; }
+
+            int slot = (index - 1) * 2;
+            if (entity.path == null || slot + 1 >= entity.path.Length) return;
+
+            Vector2 snapped = GridCursor.SnapHalfTile(world);
+            entity.path[slot] = snapped.x;
+            entity.path[slot + 1] = snapped.y;
+            Dirty = true;
+        }
+
+        /// <summary>Deletes a waypoint. Waypoint 0 is the entity and cannot be deleted.</summary>
+        public bool DeleteWaypoint(string id, int index)
+        {
+            LevelEntity entity = FindEntity(id);
+            if (entity?.path == null || index <= 0) return false;
+
+            int slot = (index - 1) * 2;
+            if (slot + 1 >= entity.path.Length) return false;
+
+            var path = new List<float>(entity.path);
+            path.RemoveRange(slot, 2);
+
+            entity.path = path.ToArray();
+            Dirty = true;
+            return true;
+        }
+
+        /// <summary>Index of the waypoint under a click, or -1. Waypoint 0 included.</summary>
+        public int WaypointAt(string id, Vector2 world, float radius = 0.4f)
+        {
+            Vector2[] points = Waypoints(id);
+
+            int best = -1;
+            float bestDistance = radius * radius;
+
+            for (int i = 0; i < points.Length; i++)
+            {
+                float distance = (points[i] - world).sqrMagnitude;
+                if (distance > bestDistance) continue;
+
+                bestDistance = distance;
+                best = i;
+            }
+
+            return best;
         }
 
         /// <summary>Lowest unused eNN id, so ids stay short and predictable after deletions.</summary>

@@ -27,6 +27,13 @@ namespace KeepyUppy.LevelEditing
         void ApplyLevel(LevelData level);
 
         /// <summary>
+        /// Refreshes zones and entities from the level being edited, leaving geometry, the
+        /// spawns and the run alone. Called after every entity edit so a dragged saw moves
+        /// on screen immediately, as a painted tile does.
+        /// </summary>
+        void SyncEntities(LevelData level);
+
+        /// <summary>
         /// Silences gameplay input while the author is editing, so painting cannot also make
         /// the player jump.
         /// </summary>

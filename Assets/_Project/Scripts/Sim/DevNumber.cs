@@ -1,16 +1,22 @@
 using System.Globalization;
 using UnityEngine;
 
-namespace KeepyUppy.Runtime
+namespace KeepyUppy.Sim
 {
     /// <summary>
-    /// Formatting and parsing for the tuning panel's editable value boxes.
+    /// Formatting and parsing for the dev panels' editable value boxes.
     ///
-    /// Separated from the panel so the awkward parts — culture, integer fields, refusing
+    /// Separated from the panels so the awkward parts — culture, integer fields, refusing
     /// NaN, keeping a typed value that sits outside its slider's range — are testable
     /// without an IMGUI context.
+    ///
+    /// It lives in Sim, which is neither its home by rights nor an accident: the tuning panel
+    /// is in Runtime and the level editor's inspector is in LevelEditor, and Runtime depends
+    /// on LevelEditor rather than the reverse. Sim is the only assembly both can see. Two
+    /// copies of "what does typing 2. mean" is the outcome worth avoiding; a plain string
+    /// parser sitting beside the simulation is the price.
     /// </summary>
-    public static class TuningValue
+    public static class DevNumber
     {
         public static string Format(float value, bool integer)
             => value.ToString(integer ? "0" : "0.###", CultureInfo.InvariantCulture);

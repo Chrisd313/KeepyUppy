@@ -1,24 +1,24 @@
 using System.Globalization;
 using System.Threading;
-using KeepyUppy.Runtime;
+using KeepyUppy.Sim;
 using NUnit.Framework;
 
 namespace KeepyUppy.SimTests
 {
     /// <summary>
-    /// The tuning panel's value boxes. Pulled out of the panel so the parts that actually
+    /// The dev panels' value boxes. Pulled out of the panel so the parts that actually
     /// break — locale, integer fields, partial input, values outside a guessed slider range —
     /// can be tested without an IMGUI context.
     /// </summary>
-    public sealed class TuningValueTests
+    public sealed class DevNumberTests
     {
         [Test]
         public void Parses_PlainNumbers()
         {
-            Assert.IsTrue(TuningValue.TryParse("2.45", integer: false, out float v));
+            Assert.IsTrue(DevNumber.TryParse("2.45", integer: false, out float v));
             Assert.AreEqual(2.45f, v, 1e-6f);
 
-            Assert.IsTrue(TuningValue.TryParse("-3", integer: false, out v));
+            Assert.IsTrue(DevNumber.TryParse("-3", integer: false, out v));
             Assert.AreEqual(-3f, v, 1e-6f);
         }
 
@@ -26,10 +26,10 @@ namespace KeepyUppy.SimTests
         public void UnparseableInput_DoesNotApply()
         {
             // Nothing usable yet: leave the value alone and let the typist keep going.
-            Assert.IsFalse(TuningValue.TryParse("", false, out _));
-            Assert.IsFalse(TuningValue.TryParse("-", false, out _));
-            Assert.IsFalse(TuningValue.TryParse("abc", false, out _));
-            Assert.IsFalse(TuningValue.TryParse("1.2.3", false, out _));
+            Assert.IsFalse(DevNumber.TryParse("", false, out _));
+            Assert.IsFalse(DevNumber.TryParse("-", false, out _));
+            Assert.IsFalse(DevNumber.TryParse("abc", false, out _));
+            Assert.IsFalse(DevNumber.TryParse("1.2.3", false, out _));
         }
 
         [Test]
@@ -38,10 +38,10 @@ namespace KeepyUppy.SimTests
             // "2." and ".5" both parse, so the value updates as you type. Harmless, because
             // the box keeps showing exactly what was typed until focus is lost — the value
             // follows the text rather than the text snapping to the value.
-            Assert.IsTrue(TuningValue.TryParse("2.", false, out float v));
+            Assert.IsTrue(DevNumber.TryParse("2.", false, out float v));
             Assert.AreEqual(2f, v, 1e-6f);
 
-            Assert.IsTrue(TuningValue.TryParse(".5", false, out v));
+            Assert.IsTrue(DevNumber.TryParse(".5", false, out v));
             Assert.AreEqual(0.5f, v, 1e-6f);
         }
 
@@ -49,15 +49,15 @@ namespace KeepyUppy.SimTests
         public void RejectsNaNAndInfinity()
         {
             // A NaN reaching the sim would poison every subsequent step.
-            Assert.IsFalse(TuningValue.TryParse("NaN", false, out _));
-            Assert.IsFalse(TuningValue.TryParse("Infinity", false, out _));
-            Assert.IsFalse(TuningValue.TryParse("-Infinity", false, out _));
+            Assert.IsFalse(DevNumber.TryParse("NaN", false, out _));
+            Assert.IsFalse(DevNumber.TryParse("Infinity", false, out _));
+            Assert.IsFalse(DevNumber.TryParse("-Infinity", false, out _));
         }
 
         [Test]
         public void IntegerFields_Round()
         {
-            Assert.IsTrue(TuningValue.TryParse("6.7", integer: true, out float v));
+            Assert.IsTrue(DevNumber.TryParse("6.7", integer: true, out float v));
             Assert.AreEqual(7f, v, 1e-6f);
         }
 
@@ -70,10 +70,10 @@ namespace KeepyUppy.SimTests
             {
                 Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
 
-                Assert.IsTrue(TuningValue.TryParse("2.45", false, out float v));
+                Assert.IsTrue(DevNumber.TryParse("2.45", false, out float v));
                 Assert.AreEqual(2.45f, v, 1e-6f);
 
-                Assert.AreEqual("2.45", TuningValue.Format(2.45f, false));
+                Assert.AreEqual("2.45", DevNumber.Format(2.45f, false));
             }
             finally
             {
@@ -84,9 +84,9 @@ namespace KeepyUppy.SimTests
         [Test]
         public void Format_MatchesFieldKind()
         {
-            Assert.AreEqual("2.45", TuningValue.Format(2.45f, false));
-            Assert.AreEqual("9", TuningValue.Format(9f, false));
-            Assert.AreEqual("6", TuningValue.Format(6.4f, integer: true));
+            Assert.AreEqual("2.45", DevNumber.Format(2.45f, false));
+            Assert.AreEqual("9", DevNumber.Format(9f, false));
+            Assert.AreEqual("6", DevNumber.Format(6.4f, integer: true));
         }
 
         [Test]
@@ -94,11 +94,11 @@ namespace KeepyUppy.SimTests
         {
             // The whole point of the box: type past the range the slider was guessed at, and
             // keep the value instead of having it dragged back inside next frame.
-            TuningValue.SliderRange(120f, 0f, 40f, out float low, out float high);
+            DevNumber.SliderRange(120f, 0f, 40f, out float low, out float high);
             Assert.AreEqual(0f, low, 1e-6f);
             Assert.GreaterOrEqual(high, 120f);
 
-            TuningValue.SliderRange(-5f, 0f, 40f, out low, out high);
+            DevNumber.SliderRange(-5f, 0f, 40f, out low, out high);
             Assert.LessOrEqual(low, -5f);
             Assert.AreEqual(40f, high, 1e-6f);
         }
@@ -106,7 +106,7 @@ namespace KeepyUppy.SimTests
         [Test]
         public void SliderRange_LeavesNormalValuesAlone()
         {
-            TuningValue.SliderRange(9f, 0f, 20f, out float low, out float high);
+            DevNumber.SliderRange(9f, 0f, 20f, out float low, out float high);
             Assert.AreEqual(0f, low, 1e-6f);
             Assert.AreEqual(20f, high, 1e-6f);
         }
@@ -114,7 +114,7 @@ namespace KeepyUppy.SimTests
         [Test]
         public void SliderRange_NeverCollapses()
         {
-            TuningValue.SliderRange(0f, 0f, 0f, out float low, out float high);
+            DevNumber.SliderRange(0f, 0f, 0f, out float low, out float high);
             Assert.Greater(high, low, "a zero-width slider range would divide by zero in IMGUI");
         }
     }

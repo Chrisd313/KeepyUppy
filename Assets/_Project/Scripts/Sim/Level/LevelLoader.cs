@@ -21,13 +21,26 @@ namespace KeepyUppy.Sim.Level
         {
             world.Grid.LoadRows(level.tiles ?? new string[0]);
 
-            LoadZones(level, world.Air);
-            LoadEntities(level, world.Entities, world.Air);
+            ApplyEntities(level, world);
 
             balloonSpawn = ToVector(level.spawn?.balloon, new Vector2(6f, 13f));
             playerSpawn = ToVector(level.spawn?.player, new Vector2(4f, 2f));
 
             world.Balloon.Radius = InflationBands.RadiusOf(ParseBand(level.spawn?.balloon_inflation));
+        }
+
+        /// <summary>
+        /// Zones and entities, without touching geometry, spawns or the run.
+        ///
+        /// Split out for the editor: moving a saw should show up the moment it moves, the way
+        /// painting a tile does, and reloading the whole level to achieve that would reset the
+        /// balloon to its spawn on every drag.
+        /// </summary>
+        public static void ApplyEntities(LevelData level, SimWorld world)
+        {
+            LoadZones(level, world.Air);
+            LoadEntities(level, world.Entities, world.Air);
+            world.Entities.Step(world.Clock.Step, world.Air);
         }
 
         /// <summary>

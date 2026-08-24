@@ -188,6 +188,31 @@ The whole schema is modelled in code, including entities, triggers and links tha
 
 ---
 
+### Inspector — 2026-08-24, as built
+
+Shown on the right whenever an entity is selected. Fields are generated from
+`EntityFields`, which lists the params each type actually uses, rather than from a panel
+written per hazard — so a new entity type appears in the editor with no UI code, the same
+way GDD §5.1 makes a new verb configuration rather than code. `EntityFields` lives in
+`Sim/Level` beside `EntityFactory` because both answer "what does a saw have"; two lists
+that could disagree would be one too many.
+
+A param of `0` means *unset* — `JsonUtility` writes every field of `EntityParams` whether
+the author touched it or not — so the inspector shows the type's default in brackets beside
+an empty field instead of pretending the value is zero.
+
+Entity edits are pushed into the running world immediately (`ILevelEditorHost.SyncEntities`),
+so a dragged saw moves on screen as it is dragged, matching how painting a tile behaves.
+That path reloads zones and entities only: geometry, spawns and the paused run are left
+alone, because reloading the level on every drag would snap the balloon back to its spawn.
+
+Typed numbers go through `DevNumber`, shared with the tuning panel, so "2." and ".5" mean
+the same thing in both. It sits in the `Sim` assembly for the unglamorous reason that
+`Runtime` depends on `LevelEditor` and not the reverse, making `Sim` the only assembly both
+can see.
+
+---
+
 ## 4. Editing
 
 ### Layout
@@ -215,8 +240,9 @@ Immediate-mode / debug UI only (Unity IMGUI, Godot Control nodes, or Dear ImGui)
 | Rect fill | `2` | Drag a rectangle of the selected tile. |
 | Select/move | `3` | Click entity to select. Drag to move. Shift-click multi-select. |
 | Zone | `4` | Drag a rect, then pick type in inspector. |
-| Path | `5` | With an entity selected, click to append waypoints. |
+| Path | `5` | With an entity selected, click to append waypoints. Drag a handle to move one, right-click to delete. Handle 0 is the entity and moves the whole trap. |
 | Link | `6` | Click source, then target. Drawn as an arrow. |
+| Place | `P` | Click drops the palette entity at the cursor. Numbered 7 internally so the reserved digit bindings above do not shuffle. |
 | Eyedropper | `alt` | Held — picks the tile/entity under the cursor. |
 
 ### Editing keys
@@ -345,6 +371,7 @@ Each phase should be independently useful. Don't start phase N+1 before N is bei
 | **1 — Author** | Grid, tile painting, entity placement, save/load, `Tab` play toggle, `R` restart | 1–2 days |
 | **2 — Tune** | Live tuning panel + profile save/load | 0.5 day |
 | **3 — Inspect** | Inspector panel, entity params, paths, `phase`, multi-select, copy/paste, undo | 1 day |
+| | *Built 2026-08-24: inspector, params, paths, phase, retype, start_state. Multi-select and copy/paste still outstanding.* | |
 | **4 — Trap logic** | Zones, triggers, links, `start_state`, delays | 1 day |
 | **5 — Time** | Pause, frame-step, slow-mo, input-recording rewind, ghost trails, teleport-test | 1 day |
 | **6 — Feedback** | Validation lint, metrics capture, death heatmap | 0.5 day |
