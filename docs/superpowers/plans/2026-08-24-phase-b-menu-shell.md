@@ -16,7 +16,7 @@ From `CLAUDE.md` and the spec. Every task's requirements implicitly include thes
 
 - **Determinism (GDD §6.1) is non-negotiable.** All simulation runs in `FixedUpdate` at 60 Hz. No `Time.deltaTime`, no `Random`, no wall-clock time in simulation code. Iterating an unordered collection where order affects the result is a defect.
 - **`SimClock.Dt` is a compile-time constant and must not change.** Fast-forward is implemented as more `Tick()` calls per render frame, never as a larger `dt` and never via `Time.timeScale`. **The simulation must not be able to observe that fast-forward happened.**
-- **Input is abstracted (GDD §5.5, LOCKED).** `IInputSource` emits intents, never raw keys, and downstream code must never learn the device. Adding a member to it is a LOCKED change requiring a dated row in `docs/balloon-game-gdd.md` §22 **in the same commit**.
+- **Input is abstracted (GDD §5.5, LOCKED).** `IInputSource` emits intents, never raw keys, and downstream code must never learn the device. Adding a member to it is a LOCKED change requiring a dated row in `docs/balloon-game-gdd.md` §22 **in the same commit** — and this phase deliberately adds none. See the dependency note.
 - **Do not create or edit `.unity`, `.prefab` or `.asset` files.** Everything is constructed in code from the bootstrap.
 - **Do not modify anything in `ProjectSettings/` without asking first.**
 - **No `using UnityEditor;` outside test assemblies**, and never anywhere under `Assets/_Project/Scripts/LevelEditor/`.
@@ -37,15 +37,16 @@ From `CLAUDE.md` and the spec. Every task's requirements implicitly include thes
 | File | Responsibility |
 |---|---|
 | `Assets/_Project/Scripts/Sim/TimeControl.cs` | How many sim steps this render frame gets |
-| `Assets/_Project/Scripts/Input/IMenuInput.cs` | Menu navigation intents, separate from gameplay |
-| `Assets/_Project/Scripts/Input/Devices/KeyboardMenuInput.cs` | Keyboard implementation of the above |
+| `Assets/_Project/Scripts/Input/IShellInput.cs` | Shell-level intents: navigation, confirm, back, fast-forward |
+| `Assets/_Project/Scripts/Input/Devices/KeyboardShellInput.cs` | Keyboard implementation of the above |
+| `Assets/_Project/Scripts/Shell/KeepyUppy.Shell.asmdef` | Its own assembly — see the dependency note |
 | `Assets/_Project/Scripts/Shell/AppScreen.cs` | The screen enum and the stack's transition rules |
 | `Assets/_Project/Scripts/Shell/LevelSelectModel.cs` | Cursor, worlds, and what is selectable |
 | `Assets/_Project/Scripts/Runtime/BitmapFont.cs` | 5×7 glyph data and the texture built from it |
 | `Assets/_Project/Scripts/Runtime/TextView.cs` | Draws a string as quads on the pixel grid |
 | `Assets/_Project/Scripts/Runtime/ShellView.cs` | The MonoBehaviour that draws whichever screen is current |
 | `Assets/_Project/Tests/EditMode/TimeControlTests.cs` | |
-| `Assets/_Project/Tests/EditMode/MenuInputTests.cs` | |
+| `Assets/_Project/Tests/EditMode/ShellInputTests.cs` | |
 | `Assets/_Project/Tests/EditMode/AppScreenTests.cs` | |
 | `Assets/_Project/Tests/EditMode/LevelSelectModelTests.cs` | |
 | `Assets/_Project/Tests/EditMode/BitmapFontTests.cs` | |
@@ -54,15 +55,18 @@ From `CLAUDE.md` and the spec. Every task's requirements implicitly include thes
 
 | File | Change |
 |---|---|
-| `Assets/_Project/Scripts/Input/IInputSource.cs` | `PausePressed`, `FastForwardHeld` |
-| `Assets/_Project/Scripts/Input/Devices/KeyboardInput.cs` | Bind `Esc` and `F` |
-| `Assets/_Project/Scripts/Input/ScriptedInputSource.cs` | Carry the two new intents |
 | `Assets/_Project/Scripts/Runtime/SimDriver.cs` | Tick N times per frame |
+| `Assets/_Project/Scripts/Runtime/KeepyUppy.Runtime.asmdef` | Reference `KeepyUppy.Shell` |
+| `Assets/_Project/Tests/EditMode/KeepyUppy.Sim.Tests.asmdef` | Reference `KeepyUppy.Shell` |
 | `Assets/_Project/Scripts/Runtime/SimBootstrap.cs` | Install the shell |
 | `Assets/_Project/Scripts/Sim/BalloonTuning.cs` | `fastForwardFactor` |
 | `docs/balloon-game-gdd.md` | §22 row, §5.5 note, §6.4 row, §16 note |
 
-**Dependency note:** `Sim` must not reference `Input`… it already does (`SimWorld` holds an `IInputSource`), so `TimeControl` in `Sim` may read one. `Shell/` is plain C# in the `Sim` assembly for the same reason: it is logic, not rendering. `ShellView`, `BitmapFont` and `TextView` live in `Runtime` because they touch `UnityEngine` rendering types.
+**Dependency note.** An asmdef covers only its own folder tree, so `Scripts/Shell/` is *not* part of `KeepyUppy.Sim` and would otherwise fall into Unity's default `Assembly-CSharp` — which the tests do not reference, and which breaks the rule that the sim compiles independently of Unity's main assembly. `Shell/` therefore gets its own `KeepyUppy.Shell.asmdef` referencing `KeepyUppy.Sim`, and both `KeepyUppy.Runtime` and `KeepyUppy.Sim.Tests` gain a reference to it. That also keeps the shell honestly outside the simulation rather than smuggled inside it.
+
+`TimeControl` lives in `Sim/` because it is the one piece of this that the fixed-step contract owns. `ShellView`, `BitmapFont` and `TextView` live in `Runtime` because they touch `UnityEngine` rendering types.
+
+**Neither new intent goes on `IInputSource`, and that reverses a GDD §22 prediction.** `IInputSource.Sample(int step)` is called *inside* `SimWorld.Tick()`, so an intent committed there cannot be read while the world is not ticking — a pause bound that way could be entered and never left. Fast-forward has a milder version of the same problem: the driver would read it one step stale. Both are shell concerns the simulation never reads, so both live on `IShellInput`, sampled per render frame. §22 predicted `PausePressed` would join `IInputSource`; Task 2 records the reversal rather than honouring the prediction into a bug.
 
 ---
 
@@ -240,197 +244,92 @@ git commit -m "Add time control: steps per frame, never a longer dt"
 
 ---
 
-## Task 2: Pause and fast-forward intents
+## Task 2: Drive time from the driver
 
 **Files:**
-- Modify: `Assets/_Project/Scripts/Input/IInputSource.cs`
-- Modify: `Assets/_Project/Scripts/Input/Devices/KeyboardInput.cs`
-- Modify: `Assets/_Project/Scripts/Input/ScriptedInputSource.cs`
 - Modify: `Assets/_Project/Scripts/Runtime/SimDriver.cs`
 - Modify: `Assets/_Project/Scripts/Sim/BalloonTuning.cs`
-- Modify: `docs/balloon-game-gdd.md` — §22, §5.5, §6.4
-- Test: `Assets/_Project/Tests/EditMode/TimeControlTests.cs` (extend), `Assets/_Project/Tests/EditMode/TuningTests.cs` (extend)
+- Modify: `docs/balloon-game-gdd.md` — §22, §5.5, §6.4, §16
+- Test: `Assets/_Project/Tests/EditMode/TuningTests.cs` (extend)
 
 **Interfaces:**
 - Consumes: `TimeControl` (Task 1)
-- Produces: on `IInputSource` — `bool PausePressed { get; }` (true for exactly one fixed step) and `bool FastForwardHeld { get; }`. On `SimDriver` — `public TimeControl Time { get; }`. On `BalloonTuning` — `public int fastForwardFactor` (default 2).
+- Produces: on `SimDriver` — `public TimeControl Speed { get; }` and `public bool FastForward { get; set; }`. On `BalloonTuning` — `public int fastForwardFactor` (default 2).
 
-**This task changes a LOCKED interface.** GDD §22 already anticipated `PausePressed`. The §22 row must land in this commit, not a later one.
+**Named `Speed`, not `Time`.** `SimDriver.Awake` already calls `UnityEngine.Time.fixedDeltaTime`; a member called `Time` would shadow it and turn that line into a confusing compile error.
 
-- [ ] **Step 1: Write the failing tests**
+**`IInputSource` is deliberately untouched.** See the dependency note above: an intent committed inside `SimWorld.Tick()` cannot be read while the world is not ticking. `FastForward` is a plain settable property here, and Task 8 drives it from `IShellInput`.
 
-Append to `TimeControlTests.cs`, inside the class:
+- [ ] **Step 1: Write the failing test**
 
-```csharp
-        [Test]
-        public void TheScriptedSourceCarriesTheNewIntents()
-        {
-            // ScriptedInputSource is what the determinism tests drive. If it cannot express
-            // an intent, that intent is permanently untestable.
-            var script = new ScriptedInputSource.Builder()
-                .Wait(2)
-                .Pause()
-                .Wait(2)
-                .Build();
-
-            script.Sample(0);
-            Assert.IsFalse(script.PausePressed);
-
-            script.Sample(2);
-            Assert.IsTrue(script.PausePressed, "the pause frame");
-
-            script.Sample(3);
-            Assert.IsFalse(script.PausePressed, "a press lasts exactly one step");
-        }
-
-        [Test]
-        public void FastForwardIsHeldNotPressed()
-        {
-            var script = new ScriptedInputSource.Builder()
-                .FastForward(3)
-                .Wait(2)
-                .Build();
-
-            script.Sample(0);
-            Assert.IsTrue(script.FastForwardHeld);
-
-            script.Sample(2);
-            Assert.IsTrue(script.FastForwardHeld, "still held on the third frame");
-
-            script.Sample(3);
-            Assert.IsFalse(script.FastForwardHeld, "released");
-        }
-```
-
-Add `using KeepyUppy.InputLayer;` to the file's usings.
-
-Append to `TuningTests.cs`, inside `CodeDefaults_StillMatchTheGddTables`:
+Append to `Assets/_Project/Tests/EditMode/TuningTests.cs`, inside `CodeDefaults_StillMatchTheGddTables`:
 
 ```csharp
             Assert.AreEqual(2, b.fastForwardFactor, "GDD 6.4 fast_forward_factor");
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [ ] **Step 2: Run the test to verify it fails**
 
-Run: `./test.sh -testFilter "KeepyUppy.SimTests.TimeControlTests"`
-Expected: FAIL — compile error, `Pause()` and `FastForward()` are not members of the builder.
+Run: `./test.sh -testFilter "KeepyUppy.SimTests.TuningTests"`
+Expected: FAIL — compile error, `fastForwardFactor` is not a member of `BalloonTuning`.
 
-- [ ] **Step 3: Extend the interface**
+- [ ] **Step 3: Add the tuning value**
 
-In `Assets/_Project/Scripts/Input/IInputSource.cs`, add after `RestartPressed`:
-
-```csharp
-        /// <summary>
-        /// True for exactly the one fixed step the press belongs to. GDD 22 anticipated this
-        /// member when the pause system did not exist yet.
-        /// </summary>
-        bool PausePressed { get; }
-
-        /// <summary>
-        /// Held, not pressed: fast-forward is released the moment something needs reacting
-        /// to, and that self-regulation is the point.
-        ///
-        /// Consumed by the driver, never by the simulation — SimWorld must not be able to
-        /// tell it is running faster (see TimeControl).
-        /// </summary>
-        bool FastForwardHeld { get; }
-```
-
-Extend the interface's own doc comment to list the two new members beside `Sample` and `RestartPressed`, with the same reasoning style.
-
-- [ ] **Step 4: Implement on both sources**
-
-In `KeyboardInput.cs`: add `bool _pauseLatched;`, the two public properties, and
-
-in `Latch()`:
-
-```csharp
-            _pauseLatched |= kb.escapeKey.wasPressedThisFrame;
-```
-
-in `Sample()`, beside the other reads:
-
-```csharp
-            // F, not Shift: left Shift is already the context verb above.
-            FastForwardHeld = kb.fKey.isPressed;
-```
-
-and with the other commits:
-
-```csharp
-            PausePressed = _pauseLatched;
-```
-
-then clear `_pauseLatched` with the others, and clear both in `ResetIntents()`.
-
-In `ScriptedInputSource.cs`: add `pausePressed` and `fastForwardHeld` to the per-frame struct, expose both properties, and add to the `Builder`:
-
-```csharp
-            /// <summary>One frame with pause pressed.</summary>
-            public Builder Pause()
-            {
-                _frames.Add(Frame(pause: true));
-                return this;
-            }
-
-            /// <summary>Holds fast-forward for the given number of frames.</summary>
-            public Builder FastForward(int frames)
-            {
-                for (int i = 0; i < frames; i++) _frames.Add(Frame(fastForward: true));
-                return this;
-            }
-```
-
-Match the file's existing builder idiom exactly — read how `Jump(int)` and `Context(int)` construct their frames and follow that shape rather than the sketch above if they differ.
-
-- [ ] **Step 5: Add the tuning value**
-
-In `BalloonTuning.cs`, beside `exitAcceptBonus`:
+In `Assets/_Project/Scripts/Sim/BalloonTuning.cs`, beside `exitAcceptBonus`:
 
 ```csharp
         /// <summary>
-        /// Steps per frame while fast-forward is held. A slider because the right value is a
-        /// feel question: too high and hazards stop being reactable while it is down.
+        /// Steps per render frame while fast-forward is held. A slider because the right
+        /// value is a feel question: too high and hazards stop being reactable while it is
+        /// down. Never a change to dt — see TimeControl.
         /// </summary>
         public int fastForwardFactor;
 ```
 
-and in `Default`: `fastForwardFactor = 2,`
+and in `Default`, beside `exitAcceptBonus = 0.15f,`:
 
-- [ ] **Step 6: Drive it from the driver**
+```csharp
+            fastForwardFactor = 2,
+```
 
-In `SimDriver.cs`, add the field and replace `FixedUpdate`:
+- [ ] **Step 4: Drive time from the driver**
+
+In `Assets/_Project/Scripts/Runtime/SimDriver.cs`, add beside `Paused`:
 
 ```csharp
         /// <summary>
-        /// Speed control. Lives here and not in SimWorld because the simulation must not be
-        /// able to observe it (GDD 6.1).
+        /// How many fixed steps each render frame gets. Lives here and not in SimWorld
+        /// because the simulation must not be able to observe it (GDD 6.1).
         /// </summary>
-        public TimeControl Time { get; } = new TimeControl();
+        public TimeControl Speed { get; } = new TimeControl();
+
+        /// <summary>Set by the shell while the fast-forward control is held.</summary>
+        public bool FastForward { get; set; }
 
         int _frame;
+```
 
+and replace `FixedUpdate`:
+
+```csharp
         void FixedUpdate()
         {
             if (Paused) return;
 
-            Time.Factor = Keyboard != null && Keyboard.FastForwardHeld
-                ? World.Tuning.fastForwardFactor
-                : 1;
+            Speed.Factor = FastForward ? World.Tuning.fastForwardFactor : 1;
 
-            int steps = Time.StepsFor(_frame++);
+            int steps = Speed.StepsFor(_frame++);
             for (int i = 0; i < steps; i++) World.Tick();
         }
 ```
 
-Note the deliberate naming collision with `UnityEngine.Time`: inside this class, `Time.fixedDeltaTime` in `Awake` must become `UnityEngine.Time.fixedDeltaTime`. Fix that line while you are here.
+- [ ] **Step 5: Add the GDD rows**
 
-- [ ] **Step 7: Add the GDD rows**
-
-In `docs/balloon-game-gdd.md` §22, add:
+In `docs/balloon-game-gdd.md` §22:
 
 ```markdown
-| 2026-08-24 | **LOCKED change — `IInputSource` (§5.5) gains `PausePressed` and `FastForwardHeld`** | `PausePressed` was anticipated by the 2026-08-22 row and arrives with the pause screen. `FastForwardHeld` is a held intent for a hold-to-speed-up control; it is bound here so gamepad and touch inherit it, but it is consumed by `SimDriver` and never by `SimWorld` — the simulation cannot observe it. Fast-forward runs *more 60 Hz steps per render frame*, never a longer `dt`, so a fast-forwarded run is bit-identical and §6.1 is untouched. The in-game clock is unaffected too: every hazard period and cooldown scales with it, so §4.3's pressure is intact and only the human's waiting compresses. The cost is the player's own reaction time, which is why it is held rather than toggled. |
+| 2026-08-24 | **Reverses the 2026-08-22 prediction: `PausePressed` does NOT join `IInputSource`** | `IInputSource.Sample(int step)` is called inside `SimWorld.Tick()`, so an intent committed there cannot be read while the world is not ticking — a pause bound that way can be entered and never left. Pause and fast-forward are shell concerns that no simulation code reads, so both live on `IShellInput`, sampled per render frame. Adding a member to a LOCKED interface for something the simulation never consumes is the widening §5.5 exists to prevent. `IInputSource` is therefore unchanged by the menu shell. |
+| 2026-08-24 | **Hold-to-fast-forward, and the §16 slow-motion assist, are the same mechanism** | Speed is expressed as the *number* of 60 Hz steps run per render frame, never a longer `dt` and never `Time.timeScale`, so a fast-forwarded run is bit-identical and §6.1 is untouched. The in-game clock is unaffected too — every hazard period and cooldown scales together, so §4.3's pressure is intact and only the human's waiting compresses. The cost is the player's own reaction time, which is why it is held rather than toggled. |
 ```
 
 In §6.4's table:
@@ -439,38 +338,38 @@ In §6.4's table:
 | `fast_forward_factor` | 2 | Steps per render frame while fast-forward is held. Feel value: too high and hazards stop being reactable. Added 2026-08-24. |
 ```
 
-In §5.5's bindings, add `F` = fast-forward (held) and `Esc` = pause. In §16, note that the slow-motion assist is the same mechanism inverted (`TimeControl.SlowMotion`).
+In §5.5's bindings note that `F` (held) is fast-forward and `Esc` is pause/back, both read through `IShellInput` rather than `IInputSource`. In §16, note that the slow-motion assist is this mechanism inverted (`TimeControl.SlowMotion`).
 
-- [ ] **Step 8: Run the whole suite**
+- [ ] **Step 6: Run the whole suite**
 
 Run: `./test.sh`
-Expected: PASS. Every existing `IInputSource` implementation must still compile — there are exactly two.
+Expected: PASS, exit code 0.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add Assets/_Project/Scripts/Input Assets/_Project/Scripts/Runtime/SimDriver.cs Assets/_Project/Scripts/Sim/BalloonTuning.cs Assets/_Project/Tests/EditMode docs/balloon-game-gdd.md
-git commit -m "Add pause and fast-forward intents, and drive time from the driver"
+git add Assets/_Project/Scripts/Runtime/SimDriver.cs Assets/_Project/Scripts/Sim/BalloonTuning.cs Assets/_Project/Tests/EditMode/TuningTests.cs Assets/StreamingAssets/levels/_tuning docs/balloon-game-gdd.md
+git commit -m "Drive simulation speed from the driver, never from dt"
 ```
 
 ---
 
-## Task 3: Menu input
+## Task 3: Shell input
 
 **Files:**
-- Create: `Assets/_Project/Scripts/Input/IMenuInput.cs`
-- Create: `Assets/_Project/Scripts/Input/Devices/KeyboardMenuInput.cs`
-- Test: `Assets/_Project/Tests/EditMode/MenuInputTests.cs`
+- Create: `Assets/_Project/Scripts/Input/IShellInput.cs`
+- Create: `Assets/_Project/Scripts/Input/Devices/KeyboardShellInput.cs`
+- Test: `Assets/_Project/Tests/EditMode/ShellInputTests.cs`
 
 **Interfaces:**
 - Consumes: nothing
-- Produces: `KeepyUppy.InputLayer.IMenuInput` — `Vector2Int Navigate { get; }`, `bool Confirm { get; }`, `bool Back { get; }`, `void Latch()`, `void Sample()`. `KeepyUppy.InputLayer.Devices.KeyboardMenuInput` implements it. Also `KeepyUppy.InputLayer.ScriptedMenuInput` for tests, with `Press(Vector2Int navigate, bool confirm, bool back)`.
+- Produces: `KeepyUppy.InputLayer.IShellInput` — `Vector2Int Navigate { get; }`, `bool Confirm { get; }`, `bool Back { get; }`, `bool FastForwardHeld { get; }`, `void Latch()`, `void Sample()`. `KeepyUppy.InputLayer.Devices.KeyboardShellInput` implements it. Also `KeepyUppy.InputLayer.ScriptedShellInput` for tests, with `Press(Vector2Int navigate, bool confirm, bool back, bool fastForward = false)`.
 
-**Why a separate interface:** GDD §5.5 exists so simulation code cannot learn which device produced an intent. Menus are not simulation. Folding navigation into `IInputSource` would grow the interface `ApplyHit` sits behind for a reason unrelated to it.
+**Why a separate interface:** GDD §5.5 exists so simulation code cannot learn which device produced an intent. None of these *are* simulation intents — no simulation code reads any of them. Folding them into `IInputSource` would grow the interface `ApplyHit` sits behind for reasons unrelated to it, and worse, `IInputSource.Sample(int step)` runs inside `SimWorld.Tick()`, so a pause committed there could never be read while paused. Everything here is sampled per render frame instead.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `Assets/_Project/Tests/EditMode/MenuInputTests.cs`:
+Create `Assets/_Project/Tests/EditMode/ShellInputTests.cs`:
 
 ```csharp
 using KeepyUppy.InputLayer;
@@ -486,13 +385,13 @@ namespace KeepyUppy.SimTests
     /// Menus are not simulation, and growing that interface for them would widen the surface
     /// ApplyHit sits behind for an unrelated reason.
     /// </summary>
-    public sealed class MenuInputTests
+    public sealed class ShellInputTests
     {
         [Test]
         public void NavigationIsOneStepPerPress()
         {
             // Held navigation would race the cursor across a level grid. One press, one move.
-            var input = new ScriptedMenuInput();
+            var input = new ScriptedShellInput();
 
             input.Press(Vector2Int.down, confirm: false, back: false);
             input.Sample();
@@ -505,7 +404,7 @@ namespace KeepyUppy.SimTests
         [Test]
         public void ConfirmAndBackAreEdges()
         {
-            var input = new ScriptedMenuInput();
+            var input = new ScriptedShellInput();
 
             input.Press(Vector2Int.zero, confirm: true, back: false);
             input.Sample();
@@ -517,14 +416,34 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void FastForwardIsHeldNotAnEdge()
+        {
+            // Held, not pressed: it is released the moment something needs reacting to, and
+            // that self-regulation is the point.
+            var input = new ScriptedShellInput();
+
+            input.Press(Vector2Int.zero, confirm: false, back: false, fastForward: true);
+            input.Sample();
+            Assert.IsTrue(input.FastForwardHeld);
+
+            input.Sample();
+            Assert.IsTrue(input.FastForwardHeld, "a held control stays held until released");
+
+            input.Press(Vector2Int.zero, confirm: false, back: false);
+            input.Sample();
+            Assert.IsFalse(input.FastForwardHeld);
+        }
+
+        [Test]
         public void NothingPressedReadsNeutral()
         {
-            var input = new ScriptedMenuInput();
+            var input = new ScriptedShellInput();
             input.Sample();
 
             Assert.AreEqual(Vector2Int.zero, input.Navigate);
             Assert.IsFalse(input.Confirm);
             Assert.IsFalse(input.Back);
+            Assert.IsFalse(input.FastForwardHeld);
         }
     }
 }
@@ -532,12 +451,12 @@ namespace KeepyUppy.SimTests
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `./test.sh -testFilter "KeepyUppy.SimTests.MenuInputTests"`
-Expected: FAIL — compile error, `ScriptedMenuInput` does not exist.
+Run: `./test.sh -testFilter "KeepyUppy.SimTests.ShellInputTests"`
+Expected: FAIL — compile error, `ScriptedShellInput` does not exist.
 
 - [ ] **Step 3: Write the interface and both implementations**
 
-Create `Assets/_Project/Scripts/Input/IMenuInput.cs` containing `IMenuInput` and `ScriptedMenuInput`:
+Create `Assets/_Project/Scripts/Input/IShellInput.cs` containing `IShellInput` and `ScriptedShellInput`:
 
 ```csharp
 using UnityEngine;
@@ -545,17 +464,21 @@ using UnityEngine;
 namespace KeepyUppy.InputLayer
 {
     /// <summary>
-    /// Menu navigation intents.
+    /// Shell-level intents: menu navigation, and the time controls.
     ///
-    /// Separate from IInputSource on purpose: GDD 5.5's rule is that simulation code must
-    /// never learn which device produced an intent, and menus are not simulation. Growing
-    /// that interface for menu concerns would widen the surface ApplyHit sits behind for a
-    /// reason unrelated to it.
+    /// Separate from IInputSource on purpose, and not only for tidiness: IInputSource is
+    /// committed by Sample(int step) INSIDE SimWorld.Tick(), so an intent bound there cannot
+    /// be read while the world is not ticking — a pause bound that way could be entered and
+    /// never left. Nothing here is a simulation intent; no simulation code reads any of it.
+    ///
+    /// GDD 22, 2026-08-24 records why this reverses the earlier prediction that PausePressed
+    /// would join IInputSource.
     ///
     /// Navigation is one step per press, never per frame held: a repeating cursor races
-    /// across a level grid faster than anyone can read it.
+    /// across a level grid faster than anyone can read it. Fast-forward is the exception and
+    /// is genuinely held.
     /// </summary>
-    public interface IMenuInput
+    public interface IShellInput
     {
         /// <summary>One step, or zero. Up is +y, matching world space rather than screen space.</summary>
         Vector2Int Navigate { get; }
@@ -571,21 +494,24 @@ namespace KeepyUppy.InputLayer
     }
 
     /// <summary>Replays scripted menu input. For tests; not a stub.</summary>
-    public sealed class ScriptedMenuInput : IMenuInput
+    public sealed class ScriptedShellInput : IShellInput
     {
         Vector2Int _navigate;
         bool _confirm;
         bool _back;
+        bool _fastForward;
 
         public Vector2Int Navigate { get; private set; }
         public bool Confirm { get; private set; }
         public bool Back { get; private set; }
+        public bool FastForwardHeld { get; private set; }
 
-        public void Press(Vector2Int navigate, bool confirm, bool back)
+        public void Press(Vector2Int navigate, bool confirm, bool back, bool fastForward = false)
         {
             _navigate = navigate;
             _confirm = confirm;
             _back = back;
+            _fastForward = fastForward;
         }
 
         public void Latch() { }
@@ -596,6 +522,9 @@ namespace KeepyUppy.InputLayer
             Confirm = _confirm;
             Back = _back;
 
+            // Held, not consumed: it stays true until the caller says otherwise.
+            FastForwardHeld = _fastForward;
+
             // Consumed: one press moves the cursor once.
             _navigate = Vector2Int.zero;
             _confirm = false;
@@ -605,18 +534,29 @@ namespace KeepyUppy.InputLayer
 }
 ```
 
-Create `Assets/_Project/Scripts/Input/Devices/KeyboardMenuInput.cs` implementing the same interface against `UnityEngine.InputSystem.Keyboard`: arrows and WASD for `Navigate`, `Space`/`Enter` for `Confirm`, `Esc` for `Back`. Latch edges in `Latch()` and commit them in `Sample()`, exactly as `KeyboardInput` does — read that file and mirror its structure, including its `Suppressed` handling if a dev panel owns the keyboard.
+Create `Assets/_Project/Scripts/Input/Devices/KeyboardShellInput.cs` implementing the same interface against `UnityEngine.InputSystem.Keyboard`:
+
+| Intent | Keys | Kind |
+|---|---|---|
+| `Navigate` | arrows and WASD | edge, one step per press |
+| `Confirm` | `Space`, `Enter` | edge |
+| `Back` | `Esc` | edge |
+| `FastForwardHeld` | `F` | held |
+
+`F`, not Shift: left Shift is already bound to the context verb in `KeyboardInput`. Latch edges in `Latch()` and commit them in `Sample()`, exactly as `KeyboardInput` does — read that file and mirror its structure, including its `Suppressed` handling so a dev panel that owns the keyboard also silences the shell.
+
+`FastForwardHeld` is read with `isPressed` and needs no latch, but it must be refreshed in `Latch()` rather than only in `Sample()`: the driver reads it during `FixedUpdate`, which can run more than once between renders.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `./test.sh -testFilter "KeepyUppy.SimTests.MenuInputTests"`
+Run: `./test.sh -testFilter "KeepyUppy.SimTests.ShellInputTests"`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Assets/_Project/Scripts/Input/IMenuInput.cs Assets/_Project/Scripts/Input/IMenuInput.cs.meta Assets/_Project/Scripts/Input/Devices/KeyboardMenuInput.cs Assets/_Project/Scripts/Input/Devices/KeyboardMenuInput.cs.meta Assets/_Project/Tests/EditMode/MenuInputTests.cs Assets/_Project/Tests/EditMode/MenuInputTests.cs.meta
-git commit -m "Add menu input, separate from the gameplay intent interface"
+git add Assets/_Project/Scripts/Input/IShellInput.cs Assets/_Project/Scripts/Input/IShellInput.cs.meta Assets/_Project/Scripts/Input/Devices/KeyboardShellInput.cs Assets/_Project/Scripts/Input/Devices/KeyboardShellInput.cs.meta Assets/_Project/Tests/EditMode/ShellInputTests.cs Assets/_Project/Tests/EditMode/ShellInputTests.cs.meta
+git commit -m "Add shell input, separate from the gameplay intent interface"
 ```
 
 ---
@@ -624,14 +564,48 @@ git commit -m "Add menu input, separate from the gameplay intent interface"
 ## Task 4: The screen stack
 
 **Files:**
+- Create: `Assets/_Project/Scripts/Shell/KeepyUppy.Shell.asmdef`
 - Create: `Assets/_Project/Scripts/Shell/AppScreen.cs`
+- Modify: `Assets/_Project/Scripts/Runtime/KeepyUppy.Runtime.asmdef`
+- Modify: `Assets/_Project/Tests/EditMode/KeepyUppy.Sim.Tests.asmdef`
 - Test: `Assets/_Project/Tests/EditMode/AppScreenTests.cs`
 
 **Interfaces:**
 - Consumes: nothing
 - Produces: `KeepyUppy.Shell.AppScreen` (enum: `Title`, `LevelSelect`, `Playing`, `Paused`, `Results`) and `KeepyUppy.Shell.ScreenStack` with `AppScreen Current { get; }`, `bool SimRuns { get; }`, `bool SimPaused { get; }`, `void Go(AppScreen screen)`, `void Back()`, and `event Action<AppScreen, AppScreen> Changed`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Create the assembly**
+
+`Scripts/Shell/` is a sibling of `Scripts/Sim/`, so it is **not** covered by
+`KeepyUppy.Sim.asmdef` — without its own it falls into Unity's default
+`Assembly-CSharp`, which the tests do not reference. Create
+`Assets/_Project/Scripts/Shell/KeepyUppy.Shell.asmdef`, following the shape of the
+existing asmdefs in this project:
+
+```json
+{
+    "name": "KeepyUppy.Shell",
+    "rootNamespace": "KeepyUppy.Shell",
+    "references": [
+        "KeepyUppy.Sim"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
+```
+
+Then add `"KeepyUppy.Shell"` to the `references` array of both
+`Assets/_Project/Scripts/Runtime/KeepyUppy.Runtime.asmdef` and
+`Assets/_Project/Tests/EditMode/KeepyUppy.Sim.Tests.asmdef`.
+
+- [ ] **Step 2: Write the failing test**
 
 Create `Assets/_Project/Tests/EditMode/AppScreenTests.cs`:
 
@@ -748,25 +722,25 @@ namespace KeepyUppy.SimTests
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 3: Run the test to verify it fails**
 
 Run: `./test.sh -testFilter "KeepyUppy.SimTests.AppScreenTests"`
 Expected: FAIL — compile error, `ScreenStack` does not exist.
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 4: Write the implementation**
 
 Create `Assets/_Project/Scripts/Shell/AppScreen.cs` with the enum and `ScreenStack`. `Back()` maps `Paused`/`Results` → `Playing`, `LevelSelect` → `Title`, `Playing` → `LevelSelect`, and `Title` → `Title`. `SimRuns` is true for every screen except `Title`… **no**: it is true everywhere, because the title has the demo room behind it. `SimPaused` is true for `Paused` and `Results` only. Document why each mapping is what it is; a table of transitions in the class comment is worth more than a comment per branch.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 5: Run the test to verify it passes**
 
 Run: `./test.sh -testFilter "KeepyUppy.SimTests.AppScreenTests"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add Assets/_Project/Scripts/Shell Assets/_Project/Tests/EditMode/AppScreenTests.cs Assets/_Project/Tests/EditMode/AppScreenTests.cs.meta
-git commit -m "Add the screen stack"
+git add Assets/_Project/Scripts/Shell Assets/_Project/Scripts/Runtime/KeepyUppy.Runtime.asmdef Assets/_Project/Tests/EditMode/KeepyUppy.Sim.Tests.asmdef Assets/_Project/Tests/EditMode/AppScreenTests.cs Assets/_Project/Tests/EditMode/AppScreenTests.cs.meta
+git commit -m "Add the screen stack in its own assembly"
 ```
 
 ---
@@ -1095,24 +1069,24 @@ git commit -m "Draw text as quads on the pixel grid"
 - Modify: `Assets/_Project/Scripts/Runtime/SimBootstrap.cs`
 
 **Interfaces:**
-- Consumes: `ScreenStack`, `LevelSelectModel` (Tasks 4–5), `KeyboardMenuInput` (Task 3), `TextView` (Task 7), `SimDriver`, `ILevelSource`, `LevelLoader`
+- Consumes: `ScreenStack`, `LevelSelectModel` (Tasks 4–5), `KeyboardShellInput` (Task 3), `TextView` (Task 7), `SimDriver`, `ILevelSource`, `LevelLoader`
 - Produces: nothing consumed by later tasks
 
 **No automated test**, for the same reason as Task 7: it is a MonoBehaviour that draws. Every decision it makes lives in `ScreenStack` and `LevelSelectModel`, both tested. Keep it that way — if you find yourself writing a rule here, it belongs in one of those.
 
 - [ ] **Step 1: Write the implementation**
 
-Create `Assets/_Project/Scripts/Runtime/ShellView.cs`, a MonoBehaviour holding a `ScreenStack`, a `LevelSelectModel`, a `KeyboardMenuInput` and a reference to the `SimDriver`. Each frame: latch and sample menu input, feed `Navigate` to the model on `LevelSelect`, act on `Confirm`/`Back`, apply `stack.SimPaused` to `driver.Paused`, and redraw the text for the current screen only when it changes — a redraw destroys and rebuilds quads, so doing it every frame would churn hundreds of objects.
+Create `Assets/_Project/Scripts/Runtime/ShellView.cs`, a MonoBehaviour holding a `ScreenStack`, a `LevelSelectModel`, a `KeyboardShellInput` and a reference to the `SimDriver`. Each frame: latch and sample shell input, feed `Navigate` to the model on `LevelSelect`, act on `Confirm`/`Back`, push `FastForwardHeld` into `driver.FastForward`, apply `stack.SimPaused` to `driver.Paused`, and redraw the text for the current screen only when it changes — a redraw destroys and rebuilds quads, so doing it every frame would churn hundreds of objects.
+
+**Pause is `Back`.** On `Playing`, `Back` goes to `Paused`; on `Paused`, `Back` returns to `Playing` and `Confirm` resumes too. Because `IShellInput` is sampled per render frame rather than per fixed step, this keeps working while the sim is frozen — which is the whole reason pause did not go on `IInputSource`.
 
 Screens to draw:
 
 - **Title** — the game's name, "PRESS SPACE", the demo room running behind it
 - **LevelSelect** — the current world's name, its levels in manifest order, a cursor marker on the current one, and left/right hints when more than one world exists. Confirm loads the level through `LevelLoader` and goes to `Playing`.
 - **Playing** — nothing drawn by the shell; the existing debug overlay stands in until phase C
-- **Paused** — "PAUSED", "SPACE RESUME", "ESC LEVELS"
+- **Paused** — "PAUSED", "SPACE RESUME", "ESC RESUME"
 - **Results** — "ROOM CLEARED" and the touch count, entered when `driver.World.IsWon` becomes true
-
-Wire `PausePressed` from the driver's keyboard into `stack.Go(AppScreen.Paused)`.
 
 In `SimBootstrap`, add the shell after the other views, and **do not remove the existing straight-to-level boot** — instead have the shell start on `Title` with the level already loaded behind it, so nothing regresses if the shell is disabled.
 
@@ -1162,7 +1136,9 @@ git commit -m "Document the menu shell"
 
 ## Self-review notes
 
-**Spec coverage.** §3 screens → Tasks 4, 8. §3 menu input → Task 3. §3 `PausePressed` → Task 2. §4 text → Tasks 6, 7. Spec §2 (save data) is phase C and absent, correctly. Fast-forward is not in the spec at all — it was added by the user after the spec was written, and Task 2 carries a GDD §22 row rather than a spec amendment, because it changes a LOCKED interface and §22 is where that is recorded.
+**Spec coverage.** §3 screens → Tasks 4, 8. §3 menu input → Task 3. §4 text → Tasks 6, 7. Spec §2 (save data) is phase C and absent, correctly.
+
+**Two deliberate departures from the spec, both recorded in GDD §22 by Task 2.** The spec put `PausePressed` on `IInputSource`, following §22's 2026-08-22 prediction; that cannot work, because `IInputSource.Sample(int step)` runs inside `SimWorld.Tick()` and a pause bound there could be entered and never left. Pause and fast-forward therefore live on `IShellInput`, and `IInputSource` is untouched by this phase. Fast-forward is not in the spec at all — it was requested after the spec was written.
 
 **Test coverage is deliberately uneven.** Tasks 1–6 are plain C# and fully tested. Tasks 7 and 8 are rendering and have none, which is the same boundary the level editor already sits on. The mitigation is structural: every rule lives in a tested model and the views only draw. A reviewer should check that boundary held rather than that the views are covered.
 
