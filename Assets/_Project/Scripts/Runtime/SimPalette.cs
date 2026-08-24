@@ -18,6 +18,12 @@ namespace KeepyUppy.Runtime
         /// <summary>Reserved: the balloon only. Highest contrast object on screen.</summary>
         public static readonly Color Balloon    = new Color32(0xFF, 0xD8, 0x4D, 0xFF);
 
+        /// <summary>
+        /// Reserved: the exit only (GDD 13.1). The one thing on screen the player is trying
+        /// to reach must never share a colour with something they are trying to avoid.
+        /// </summary>
+        public static readonly Color Exit       = new Color32(0x5A, 0xD8, 0x8A, 0x88);
+
         /// <summary>Not reserved. Deliberately quieter than the balloon.</summary>
         public static readonly Color Player     = new Color32(0x7F, 0x8C, 0xA8, 0xFF);
     }

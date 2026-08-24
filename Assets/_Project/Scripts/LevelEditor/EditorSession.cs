@@ -40,6 +40,13 @@ namespace KeepyUppy.LevelEditing
         public TileKind SelectedTile = TileKind.Solid;
         public string SelectedEntityId;
 
+        /// <summary>
+        /// The exit is selected instead of an entity. Kept as a separate flag rather than a
+        /// magic entity id: the gate is not an entity, and pretending otherwise would leak
+        /// into the entity list, the id allocator and every foreach over it.
+        /// </summary>
+        public bool ExitSelected;
+
         /// <summary>Unsaved changes exist. Shown in the status bar; never blocks anything.</summary>
         public bool Dirty { get; private set; }
 
@@ -62,6 +69,7 @@ namespace KeepyUppy.LevelEditing
             Grid.LoadRows(Level.tiles ?? new string[0]);
             Undo.Clear();
             SelectedEntityId = null;
+            ExitSelected = false;
             Dirty = false;
         }
 
@@ -205,6 +213,73 @@ namespace KeepyUppy.LevelEditing
             if (SelectedEntityId == id) SelectedEntityId = null;
             Dirty = true;
             return true;
+        }
+
+        // -------------------------------------------------------------------- exit
+
+        /// <summary>The gate as the sim sees it, so the editor and the game agree on it.</summary>
+        public ExitGate Gate() => LevelLoader.ToGate(Level.exit);
+
+        /// <summary>Whether a click lands on the gate.</summary>
+        public bool ExitAt(Vector2 world)
+        {
+            ExitGate gate = Gate();
+            if (!gate.Present) return false;
+
+            Vector2 half = gate.Size * 0.5f;
+
+            return Mathf.Abs(world.x - gate.Position.x) <= half.x &&
+                   Mathf.Abs(world.y - gate.Position.y) <= half.y;
+        }
+
+        public void SelectExit()
+        {
+            ExitSelected = true;
+            SelectedEntityId = null;
+        }
+
+        public void MoveExit(Vector2 world)
+        {
+            if (Level.exit == null) Level.exit = new LevelExit();
+
+            Vector2 snapped = GridCursor.SnapHalfTile(world);
+            Level.exit.pos = new[] { snapped.x, snapped.y };
+            Dirty = true;
+        }
+
+        public void SetExitShape(string shape)
+        {
+            if (Level.exit == null) Level.exit = new LevelExit();
+            if (Level.exit.shape == shape) return;
+
+            Level.exit.shape = shape;
+            Dirty = true;
+        }
+
+        public void SetExitDiameter(float diameter)
+        {
+            if (Level.exit == null) Level.exit = new LevelExit();
+            if (Mathf.Approximately(Level.exit.diameter, diameter)) return;
+
+            Level.exit.diameter = Mathf.Max(diameter, 0f);
+            Dirty = true;
+        }
+
+        /// <summary>
+        /// The band the level asks the player to arrive at (schema: required_band).
+        ///
+        /// Deliberately NOT derived from the diameter. GDD 7.4's ceiling ring demands Full or
+        /// Critical because of where it is, not how wide it is, and no aperture can express
+        /// that — so this is the author's statement of intent and the editor never overwrites
+        /// it. The validator only objects when the stated band physically cannot fit.
+        /// </summary>
+        public void SetRequiredBand(string band)
+        {
+            if (Level.exit == null) Level.exit = new LevelExit();
+            if (Level.exit.required_band == band) return;
+
+            Level.exit.required_band = band;
+            Dirty = true;
         }
 
         // -------------------------------------------------------------- properties

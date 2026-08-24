@@ -100,9 +100,10 @@ namespace KeepyUppy.LevelEditing
 
             if (Session.Mode == EditorMode.Play) return;
 
-            if (Session.SelectedEntityId != _lastSelected)
+            string selection = Session.ExitSelected ? "@exit" : Session.SelectedEntityId;
+            if (selection != _lastSelected)
             {
-                _lastSelected = Session.SelectedEntityId;
+                _lastSelected = selection;
                 ForgetFieldText();
             }
 
@@ -207,19 +208,39 @@ namespace KeepyUppy.LevelEditing
                 if (hit != null)
                 {
                     Session.SelectedEntityId = hit.id;
+                    Session.ExitSelected = false;
                     _entityDragOffset = new Vector2(hit.pos[0], hit.pos[1]) - world;
+                    Session.BeginEdit();
+                    _dragging = true;
+                }
+                else if (Session.ExitAt(world))
+                {
+                    // Entities are tested first because the gate is large. Anything else and a
+                    // hazard placed in the doorway would be unselectable.
+                    Session.SelectExit();
+                    _entityDragOffset = Session.Gate().Position - world;
                     Session.BeginEdit();
                     _dragging = true;
                 }
                 else
                 {
                     Session.SelectedEntityId = null;
+                    Session.ExitSelected = false;
                 }
             }
 
             if (mouse.leftButton.wasReleasedThisFrame) _dragging = false;
 
-            if (!_dragging || Session.SelectedEntityId == null) return;
+            if (!_dragging) return;
+
+            if (Session.ExitSelected)
+            {
+                Session.MoveExit(world + _entityDragOffset);
+                SyncExit();
+                return;
+            }
+
+            if (Session.SelectedEntityId == null) return;
 
             Session.MoveEntity(Session.SelectedEntityId, world + _entityDragOffset);
             SyncEntities();
@@ -304,6 +325,9 @@ namespace KeepyUppy.LevelEditing
         /// Geometry, spawns and the paused run are left alone — this is not a reload.
         /// </summary>
         void SyncEntities() => Host.SyncEntities(Session.Level);
+
+        /// <summary>The gate lives on the world, not the entity list, so it syncs its own way.</summary>
+        void SyncExit() => Host.SyncExit(Session.Level);
 
         /// <summary>Screen point (y up) against the GUI rects (y down).</summary>
         bool PointerOverUi(Vector2 screen)
@@ -483,6 +507,8 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         void DrawInspector()
         {
+            if (Session.ExitSelected) { DrawExitInspector(); return; }
+
             LevelEntity entity = Session.FindEntity(Session.SelectedEntityId);
 
             // pos comes from a file that a human may have edited; do not trust its length.
@@ -532,6 +558,79 @@ namespace KeepyUppy.LevelEditing
 
             GUILayout.EndArea();
         }
+
+        /// <summary>
+        /// The gate (GDD 7.4). Diameter is the level's question, so the band it admits is
+        /// spelled out: "1.6 m" means little while authoring, but "fits up to nominal" is the
+        /// sentence the level is actually making.
+        /// </summary>
+        void DrawExitInspector()
+        {
+            LevelExit exit = Session.Level.exit;
+            if (exit?.pos == null || exit.pos.Length < 2) { _inspectorRect = Rect.zero; return; }
+
+            _inspectorRect = new Rect(Screen.width - 252f, 60f, 244f, 200f);
+            GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
+
+            GUILayout.Label("exit");
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("shape", GUILayout.Width(70f));
+            if (GUILayout.Button(exit.shape, GUILayout.Width(80f)))
+            {
+                Session.BeginEdit();
+                Session.SetExitShape(exit.shape == "slot" ? "ring" : "slot");
+                SyncExit();
+            }
+            GUILayout.EndHorizontal();
+
+            float x = FloatRow("x", "exit.x", exit.pos[0]);
+            float y = FloatRow("y", "exit.y", exit.pos[1]);
+            if (!Mathf.Approximately(x, exit.pos[0]) || !Mathf.Approximately(y, exit.pos[1]))
+            {
+                Session.BeginEdit();
+                Session.MoveExit(new Vector2(x, y));
+                SyncExit();
+            }
+
+            float diameter = FloatRow("diameter", "exit.d", exit.diameter);
+            if (!Mathf.Approximately(diameter, exit.diameter))
+            {
+                Session.BeginEdit();
+                Session.SetExitDiameter(diameter);
+                SyncExit();
+            }
+
+            ExitGate gate = Session.Gate();
+            GUILayout.Label(gate.Present
+                ? $"fits up to {LevelLoader.BandName(gate.LargestBandThatFits())}"
+                : "no exit");
+
+            // The band the level ASKS for, which the aperture cannot state on its own: a
+            // ceiling ring demands buoyancy because of where it is (GDD 7.4).
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("asks for", GUILayout.Width(70f));
+            if (GUILayout.Button(exit.required_band, GUILayout.Width(90f)))
+            {
+                int index = System.Array.IndexOf(BandCycle, exit.required_band);
+                Session.BeginEdit();
+                Session.SetRequiredBand(BandCycle[(index + 1 + BandCycle.Length) % BandCycle.Length]);
+            }
+            GUILayout.EndHorizontal();
+
+            float spawn = InflationBands.RadiusOf(
+                LevelLoader.ParseBand(Session.Level.spawn?.balloon_inflation));
+
+            if (gate.Present && !gate.Fits(spawn))
+                GUILayout.Label("! the spawn balloon does not fit");
+
+            GUILayout.EndArea();
+        }
+
+        static readonly string[] BandCycle =
+        {
+            "shrivelled", "slack", "nominal", "full", "critical",
+        };
 
         void DrawTypeRow(LevelEntity entity)
         {
@@ -747,6 +846,37 @@ namespace KeepyUppy.LevelEditing
 
                 DrawPath(entity, selected);
             }
+
+            DrawExit();
+        }
+
+        /// <summary>
+        /// The aperture, and when selected the accept volume around it. GDD 8's generosity
+        /// is invisible in play and worth seeing while authoring.
+        /// </summary>
+        void DrawExit()
+        {
+            ExitGate gate = Session.Gate();
+            if (!gate.Present) return;
+
+            Vector2 size = gate.Size;
+            var aperture = new Rect(gate.Position.x - size.x * 0.5f, gate.Position.y - size.y * 0.5f,
+                                    size.x, size.y);
+
+            DrawWorldRect(aperture, Session.ExitSelected
+                ? new Color(0.4f, 1f, 0.6f, 0.5f)
+                : new Color(0.4f, 1f, 0.6f, 0.25f));
+
+            Vector2 label = WorldToGui(new Vector2(aperture.xMin, aperture.yMax + 0.5f));
+            GUI.Label(new Rect(label.x, label.y, 240f, 18f),
+                      $"exit {gate.Diameter:0.##} m, fits {LevelLoader.BandName(gate.LargestBandThatFits())}");
+
+            if (!Session.ExitSelected && !_showHitboxes) return;
+
+            float bonus = Host.World.Tuning.exitAcceptBonus;
+            DrawWorldRect(new Rect(aperture.x - bonus, aperture.y - bonus,
+                                   aperture.width + bonus * 2f, aperture.height + bonus * 2f),
+                          new Color(0.4f, 1f, 0.6f, 0.15f));
         }
 
         /// <summary>
@@ -762,6 +892,11 @@ namespace KeepyUppy.LevelEditing
             Color line = selected ? new Color(1f, 1f, 0.3f, 0.5f) : new Color(0.5f, 0.8f, 1f, 0.25f);
 
             for (int i = 1; i < points.Length; i++) DrawWorldLine(points[i - 1], points[i], line);
+
+            // Loop closes the circuit, so the closing edge is part of the route and has to be
+            // drawn or the author cannot see what the entity will actually walk.
+            if (entity.path_mode == "loop" && points.Length > 2)
+                DrawWorldLine(points[points.Length - 1], points[0], line);
 
             // Handle 0 sits on the entity itself and moves the whole trap.
             for (int i = 0; i < points.Length; i++)

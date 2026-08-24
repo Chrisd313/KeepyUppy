@@ -106,6 +106,61 @@ namespace KeepyUppy.Sim.Level
 
             if (level.exit.shape != "ring" && level.exit.shape != "slot")
                 warnings.Add($"unknown exit shape '{level.exit.shape}' (expected ring or slot)");
+
+            ExitGate gate = LevelLoader.ToGate(level.exit);
+            if (!gate.Present) return;
+
+            // The one lint that catches an unwinnable level. Inflation is not implemented, so
+            // the balloon is whatever size it spawned at for the whole room: a gate narrower
+            // than that can never be taken, and nothing in play would tell the author why.
+            InflationBand band = LevelLoader.ParseBand(level.spawn?.balloon_inflation);
+            float radius = InflationBands.RadiusOf(band);
+
+            if (!gate.Fits(radius))
+            {
+                warnings.Add($"exit is {gate.Diameter:0.##} m but the balloon spawns {band} " +
+                             $"({radius * 2f:0.##} m across) — unwinnable until inflation exists");
+            }
+
+            // required_band is the band the level asks the player to ARRIVE at, which is not
+            // the same as the largest that fits: GDD 7.4's ceiling ring demands Full or
+            // Critical because of where it is, not how wide it is, and no diameter can say
+            // that. So only a physical contradiction is worth a warning — a stated band that
+            // cannot pass through the hole at all.
+            if (!string.IsNullOrEmpty(level.exit.required_band))
+            {
+                InflationBand stated = LevelLoader.ParseBand(level.exit.required_band);
+                if (!gate.Fits(InflationBands.RadiusOf(stated)))
+                {
+                    warnings.Add($"exit required_band '{level.exit.required_band}' cannot fit " +
+                                 $"through a {gate.Diameter:0.##} m aperture");
+                }
+            }
+
+            if (OverlapsSolid(level, gate))
+                warnings.Add("exit is inside solid geometry");
+        }
+
+        /// <summary>Whether any tile under the gate's aperture is solid.</summary>
+        static bool OverlapsSolid(LevelData level, ExitGate gate)
+        {
+            if (level.tiles == null) return false;
+
+            var grid = new TileGrid();
+            grid.LoadRows(level.tiles);
+
+            Vector2 half = gate.Size * 0.5f;
+
+            int x0 = Mathf.FloorToInt(gate.Position.x - half.x);
+            int x1 = Mathf.FloorToInt(gate.Position.x + half.x);
+            int y0 = Mathf.FloorToInt(gate.Position.y - half.y);
+            int y1 = Mathf.FloorToInt(gate.Position.y + half.y);
+
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+                if (grid.IsSolid(x, y)) return true;
+
+            return false;
         }
 
         static void ValidateIds(LevelData level, List<string> warnings)

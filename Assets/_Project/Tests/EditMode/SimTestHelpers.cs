@@ -27,6 +27,7 @@ namespace KeepyUppy.SimTests
         public int jumpBufferFrames;
         public bool grounded;
         public bool isDead;
+        public bool isWon;
 
         /// <summary>
         /// Entity state, folded to one value per field so the snapshot does not have to know
@@ -52,6 +53,7 @@ namespace KeepyUppy.SimTests
             jumpBufferFrames = w.Player.JumpBufferFrames,
             grounded = w.Player.Grounded,
             isDead = w.IsDead,
+            isWon = w.IsWon,
             entityPositions = FoldPositions(w.Entities),
             entityExposure = FoldExposure(w.Entities),
         };
@@ -101,6 +103,7 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(jumpBufferFrames, other.jumpBufferFrames, $"{context}: jumpBufferFrames");
             Assert.AreEqual(grounded, other.grounded, $"{context}: grounded");
             Assert.AreEqual(isDead, other.isDead, $"{context}: isDead");
+            Assert.AreEqual(isWon, other.isWon, $"{context}: isWon");
             Assert.AreEqual(entityPositions, other.entityPositions, $"{context}: entity positions");
             Assert.AreEqual(entityExposure, other.entityExposure, $"{context}: entity exposure");
         }

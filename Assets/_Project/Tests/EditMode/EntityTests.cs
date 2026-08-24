@@ -70,6 +70,50 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void Loop_ClosesTheCircuit_AndNeverTeleports()
+        {
+            // A square drawn corner to corner should walk the fourth edge home. Reversing at
+            // the last corner, or jumping across the diagonal, both read as a bug on screen.
+            var square = new[]
+            {
+                new Vector2(10f, 6f), new Vector2(16f, 6f),
+                new Vector2(16f, 12f), new Vector2(10f, 12f),
+            };
+
+            float perimeter = EntityPath.Length(square, closed: true);
+            Assert.AreEqual(24f, perimeter, 1e-3f, "the closing edge should be counted");
+
+            Vector2 previous = EntityPath.Evaluate(square, PathMode.Loop, 6f, 0f, 0);
+            bool onClosingEdge = false;
+
+            for (int step = 1; step <= 600; step++)
+            {
+                Vector2 p = EntityPath.Evaluate(square, PathMode.Loop, 6f, 0f, step);
+
+                // At 6 m/s a step covers 0.1 m. A teleport across the square would be 6.
+                Assert.Less(Vector2.Distance(previous, p), 0.5f, $"step {step} jumped");
+
+                // The closing edge is x = 10, between the last corner and the first.
+                if (Mathf.Abs(p.x - 10f) < 1e-3f && p.y > 6.5f && p.y < 11.5f) onClosingEdge = true;
+
+                previous = p;
+            }
+
+            Assert.IsTrue(onClosingEdge, "the entity never travelled the closing edge");
+        }
+
+        [Test]
+        public void Loop_OnATwoPointPath_StillWraps()
+        {
+            // Two points have no interior, so closing them would just double back. This is
+            // the one case where loop and pingpong legitimately look alike.
+            Vector2[] path = Line();
+
+            Assert.AreEqual(EntityPath.Length(path),
+                            EntityPath.Length(path, closed: true), 1e-4f);
+        }
+
+        [Test]
         public void Once_StopsAtTheEnd()
         {
             Vector2 end = EntityPath.Evaluate(Line(), PathMode.Once, 4f, 0f, 100000);

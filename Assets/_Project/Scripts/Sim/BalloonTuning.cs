@@ -93,6 +93,13 @@ namespace KeepyUppy.Sim
         public float flutterAccel;
         public float flutterFalloffSpeed;
 
+        /// <summary>
+        /// GDD 8, the generous half. The exit's accept volume is larger than its visual by
+        /// this much — the mirror of hazard_pop_radius_shrink. Tuned separately, because
+        /// generosity at the goal and cruelty at the hazards are different feelings.
+        /// </summary>
+        public float exitAcceptBonus;
+
         public static BalloonTuning Default => new BalloonTuning
         {
             gravity = 1.0f,
@@ -125,6 +132,8 @@ namespace KeepyUppy.Sim
 
             flutterAccel = 1.2f,
             flutterFalloffSpeed = 3.0f,
+
+            exitAcceptBonus = 0.15f,
         };
     }
 }

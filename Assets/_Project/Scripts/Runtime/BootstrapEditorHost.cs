@@ -51,6 +51,8 @@ namespace KeepyUppy.Runtime
 
         public void SyncEntities(LevelData level) => LevelLoader.ApplyEntities(level, World);
 
+        public void SyncExit(LevelData level) => World.Exit = LevelLoader.ToGate(level.exit);
+
         public void SetGameplaySuppressed(bool suppressed)
             => DevInputCapture.EditorModeActive = suppressed;
 

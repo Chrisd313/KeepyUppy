@@ -68,6 +68,7 @@ namespace KeepyUppy.Runtime
             BuildCamera();
             BuildTileViews(world.Grid);
             BuildEntityViews(world);
+            BuildExitView(world);
             BuildBalloonView(world.Balloon);
             BuildPlayerView(world.Player);
 
@@ -247,6 +248,15 @@ namespace KeepyUppy.Runtime
             root.transform.SetParent(transform, false);
 
             root.AddComponent<EntityViewSync>().World = world;
+        }
+
+        /// <summary>The gate follows the world's exit, so editing it shows up at once.</summary>
+        void BuildExitView(SimWorld world)
+        {
+            var root = new GameObject("Exit");
+            root.transform.SetParent(transform, false);
+
+            root.AddComponent<ExitView>().World = world;
         }
 
         void BuildBalloonView(BalloonBody balloon)

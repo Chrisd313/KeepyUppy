@@ -33,7 +33,11 @@ namespace KeepyUppy.Sim.Entities
             if (points == null || points.Length == 0) return Vector2.zero;
             if (points.Length == 1 || speed <= 0f) return points[0];
 
-            float total = Length(points);
+            // Loop closes the circuit: a square drawn corner to corner walks the fourth
+            // edge home rather than teleporting across the diagonal.
+            bool closed = mode == PathMode.Loop;
+
+            float total = Length(points, closed);
             if (total <= 0f) return points[0];
 
             // step * Dt, not an accumulated clock: one multiply, exactly reproducible.
@@ -59,35 +63,50 @@ namespace KeepyUppy.Sim.Entities
                     break;
             }
 
-            return PointAt(points, distance);
+            return PointAt(points, distance, closed);
         }
 
-        /// <summary>Total length of the polyline. Open, not closed — Loop teleports home.</summary>
-        public static float Length(Vector2[] points)
+        /// <summary>
+        /// Total length of the polyline.
+        ///
+        /// <paramref name="closed"/> adds the segment from the last point back to the first,
+        /// which is what makes a drawn square a circuit rather than a path with a hole in it.
+        /// A path whose last waypoint is already on its first has a zero-length closing edge,
+        /// so an author who clicks back onto the start gets the same result either way.
+        /// </summary>
+        public static float Length(Vector2[] points, bool closed = false)
         {
             float total = 0f;
             for (int i = 1; i < points.Length; i++) total += (points[i] - points[i - 1]).magnitude;
+
+            if (closed && points.Length > 2) total += (points[0] - points[points.Length - 1]).magnitude;
+
             return total;
         }
 
         /// <summary>The point <paramref name="distance"/> metres along the polyline.</summary>
-        public static Vector2 PointAt(Vector2[] points, float distance)
+        public static Vector2 PointAt(Vector2[] points, float distance, bool closed = false)
         {
             if (distance <= 0f) return points[0];
 
-            for (int i = 1; i < points.Length; i++)
+            int segments = closed && points.Length > 2 ? points.Length : points.Length - 1;
+
+            for (int i = 0; i < segments; i++)
             {
-                Vector2 from = points[i - 1];
-                Vector2 to = points[i];
-                float segment = (to - from).magnitude;
+                Vector2 from = points[i];
 
-                if (segment <= 0f) continue;
-                if (distance > segment) { distance -= segment; continue; }
+                // The last segment of a closed circuit wraps to the start.
+                Vector2 to = points[(i + 1) % points.Length];
 
-                return from + (to - from) * (distance / segment);
+                float length = (to - from).magnitude;
+
+                if (length <= 0f) continue;
+                if (distance > length) { distance -= length; continue; }
+
+                return from + (to - from) * (distance / length);
             }
 
-            return points[points.Length - 1];
+            return closed ? points[0] : points[points.Length - 1];
         }
 
         /// <summary>

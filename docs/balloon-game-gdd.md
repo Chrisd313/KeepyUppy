@@ -271,6 +271,7 @@ Starting values. Every one of these is a slider in the tuning panel (§18).
 | `active_contact_min_player_vy` | 1.0 m/s | **LOCKED §4.2 threshold.** Above this, or a jump pressed inside the buffer, contact is active. Below both, it is passive. |
 | `player_bump_radius_bonus` | +0.15 m | §8 — player's bump volume, larger than the balloon's visual |
 | `hazard_pop_radius_shrink` | −0.15 m | §8 — every hazard's pop volume, smaller than its visual |
+| `exit_accept_bonus` | +0.15 m | §8 — the exit's accept volume, larger than its visual. The generous mirror of the row above; tuned separately because generosity at the goal and cruelty at the hazards are different feelings. Added 2026-08-24. |
 
 Rows below `max_speed` added 2026-08-22: numbers §5.4, §5.5 and §8 describe in words but never quantified.
 
@@ -355,6 +356,31 @@ The leak is the most valuable item in this section because it creates a **middle
 The level ends by putting the balloon through a gate of a specific diameter. A wide ring near the ceiling requires arriving **Full** or **Critical**. A floor-level letterbox slot requires arriving **Shrivelled** — which also means falling at 3.5 m/s with almost no reaction time.
 
 **The shape of the exit states the level's answer, visually, on a single screen.** This is what turns inflation from a modifier into the goal.
+
+#### Implementation — 2026-08-24
+
+The gate is a **fit test**: `balloon diameter <= exit diameter`, judged on the balloon's
+centre being inside the aperture. A slot is measured on its *height*, which is the whole
+point of a letterbox — being wide does not help you through it. Position is what makes a
+ceiling ring demand buoyancy; the diameter alone never encodes height.
+
+`required_band` stays **derived** from the diameter and is never read by the simulation. The
+editor recomputes it whenever the diameter changes, and the validator warns if a hand-edited
+file disagrees, so the level-select icon cannot lie.
+
+A balloon too large **passes over the gate** rather than bouncing off the rim. That is
+deliberate only while inflation is unimplemented: the radius is fixed at spawn, so a gate
+too small is an unwinnable level rather than a moment of play, and the validator says so on
+save. **When §7.2 inflation lands, a too-large balloon meeting a gate becomes a real event
+and needs a collision** — `SimWorld.CheckExit` is where that goes.
+
+Death beats arrival on the same step. §8's generosity lives in the accept volume, not in
+letting a pop be overridden by arriving.
+
+The win is held for 60 frames and then the room restarts, because there is no room list to
+advance to yet. That hold is the hook a level sequence replaces.
+
+---
 
 ### 7.5 Readability — LOCKED
 

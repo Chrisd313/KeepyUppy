@@ -52,7 +52,16 @@ namespace KeepyUppy.Runtime
                 $"profile  {ProfileLabel(world.Profile)}\n" +
                 $"{(world.IsDead ? world.LastDeath.ToString() : string.Empty)}";
 
-            GUI.Label(new Rect(12f, 8f, 320f, 140f), text, _style);
+            GUI.Label(new Rect(12f, 8f, 320f, 160f), text, _style);
+
+            // GDD 15: the touch count is the medal number, so the run that earned it is worth
+            // showing rather than being folded straight back into the next attempt.
+            if (world.IsWon)
+            {
+                GUI.Label(new Rect(0f, Screen.height * 0.4f, Screen.width, 40f),
+                          $"ROOM CLEARED   {world.WinningTouches} touches",
+                          new GUIStyle(_style) { alignment = TextAnchor.MiddleCenter, fontSize = 22 });
+            }
             GUI.Label(new Rect(12f, Screen.height - 26f, 640f, 20f),
                       "A/D move   Space jump   J context   R restart   1/2/3 profile", _style);
         }

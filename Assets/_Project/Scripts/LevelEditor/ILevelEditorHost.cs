@@ -34,6 +34,12 @@ namespace KeepyUppy.LevelEditing
         void SyncEntities(LevelData level);
 
         /// <summary>
+        /// Refreshes the exit gate alone, for the same reason as SyncEntities: dragging the
+        /// way out should move it on screen rather than restart the room.
+        /// </summary>
+        void SyncExit(LevelData level);
+
+        /// <summary>
         /// Silences gameplay input while the author is editing, so painting cannot also make
         /// the player jump.
         /// </summary>

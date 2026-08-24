@@ -27,6 +27,7 @@ namespace KeepyUppy.Sim.Level
             playerSpawn = ToVector(level.spawn?.player, new Vector2(4f, 2f));
 
             world.Balloon.Radius = InflationBands.RadiusOf(ParseBand(level.spawn?.balloon_inflation));
+            world.Exit = ToGate(level.exit);
         }
 
         /// <summary>
@@ -84,6 +85,20 @@ namespace KeepyUppy.Sim.Level
                 SimEntity entity = EntityFactory.Create(data);
                 if (entity != null) entities.Add(entity, air);
             }
+        }
+
+        /// <summary>The way out (GDD 7.4). A level without one is a sandbox, not an error.</summary>
+        public static ExitGate ToGate(LevelExit exit)
+        {
+            if (exit?.pos == null || exit.pos.Length < 2 || exit.diameter <= 0f) return ExitGate.None;
+
+            return new ExitGate
+            {
+                Present = true,
+                Position = new Vector2(exit.pos[0], exit.pos[1]),
+                Shape = exit.shape == "slot" ? ExitShape.Slot : ExitShape.Ring,
+                Diameter = exit.diameter,
+            };
         }
 
         public static InflationBand ParseBand(string band)
