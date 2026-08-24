@@ -60,15 +60,9 @@ namespace KeepyUppy.Runtime
 
             SimWorld world = _driver.World;
             LoadTuning(world);
-            LoadLevel(world, out Vector2 balloonSpawn, out Vector2 playerSpawn);
+            LoadLevel();
 
-            world.Configure(
-                balloonPos: balloonSpawn,
-                balloonVel: Vector2.zero,
-                playerPos: playerSpawn,
-                input: _driver.Keyboard,
-                seed: Seed
-            );
+            LevelLoader.ApplyAndConfigure(_level, world, _driver.Keyboard, Seed);
 
             BuildCamera();
             BuildTileViews(world.Grid);
@@ -122,7 +116,7 @@ namespace KeepyUppy.Runtime
         /// — so the file is correct by construction rather than hand-typed, and after that the
         /// JSON is the only source of truth.
         /// </summary>
-        void LoadLevel(SimWorld world, out Vector2 balloonSpawn, out Vector2 playerSpawn)
+        void LoadLevel()
         {
             _levelSource = new FileLevelSource();
 
@@ -146,7 +140,6 @@ namespace KeepyUppy.Runtime
             foreach (string warning in warnings) Debug.LogWarning($"[level] {StartingLevel}: {warning}");
 
             _level = level;
-            LevelLoader.Apply(level, world, out balloonSpawn, out playerSpawn);
         }
 
         /// <summary>

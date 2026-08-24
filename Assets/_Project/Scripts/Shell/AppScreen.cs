@@ -37,6 +37,9 @@ namespace KeepyUppy.Shell
     {
         public AppScreen Current { get; private set; } = AppScreen.Title;
 
+        /// <summary>Edge state for <see cref="ObserveWin"/> - see its comment.</summary>
+        bool _wasWon;
+
         /// <summary>The room behind the current screen is alive - true for every screen.</summary>
         public bool SimRuns => true;
 
@@ -54,6 +57,28 @@ namespace KeepyUppy.Shell
             AppScreen from = Current;
             Current = screen;
             Changed?.Invoke(from, Current);
+        }
+
+        /// <summary>
+        /// Feeds the room's win state in, one bool per frame, and goes to Results on a
+        /// false-to-true transition while on Playing.
+        ///
+        /// Edge-triggered rather than level-triggered on purpose: SimWorld.IsWon is cleared
+        /// only by Restart(), and Restart() only fires after the win-hold's fixed steps run -
+        /// steps that cannot run while Results has the sim paused. A level-triggered check
+        /// (just "IsWon && Current == Playing") sees IsWon still true the instant Back()
+        /// returns to Playing, immediately re-enters Results, which re-pauses the sim before
+        /// a single step can run - the room can never finish its own hold-then-restart, and
+        /// the player is stuck bouncing between the two screens. Tracking the previous value
+        /// here, rather than in the view above, is what makes that failure mode a unit test
+        /// instead of a bug found by hand.
+        /// </summary>
+        public void ObserveWin(bool isWon)
+        {
+            bool risingEdge = isWon && !_wasWon;
+            _wasWon = isWon;
+
+            if (risingEdge && Current == AppScreen.Playing) Go(AppScreen.Results);
         }
 
         /// <summary>Follows the fixed back-mapping in the class comment. Title has nowhere to go.</summary>

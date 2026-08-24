@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using KeepyUppy.InputLayer.Devices;
 using KeepyUppy.Shell;
-using KeepyUppy.Sim;
 using KeepyUppy.Sim.Level;
 using UnityEngine;
 
@@ -31,7 +30,7 @@ namespace KeepyUppy.Runtime
         // What the last redraw drew, so Update only rebuilds quads when something visible
         // actually changed (CLAUDE.md: a redraw destroys and rebuilds a quad per lit pixel).
         GameObject _drawn;
-        AppScreen _drawnScreen = (AppScreen)(-1);
+        AppScreen? _drawnScreen;
         int _drawnWorldCursor = -1;
         int _drawnLevelCursor = -1;
 
@@ -46,7 +45,9 @@ namespace KeepyUppy.Runtime
             _input.Latch();
             _input.Sample();
 
-            CheckForWin();
+            // Edge detection lives in ScreenStack, not here — see ObserveWin's comment for
+            // why a level-triggered check in this file is the bug this method fixes.
+            _stack.ObserveWin(Driver.World.IsWon);
             HandleInput();
 
             Driver.FastForward = _input.FastForwardHeld;
@@ -66,17 +67,6 @@ namespace KeepyUppy.Runtime
             LevelIndex index = LevelSource.TryLoadIndex(out LevelIndex loaded) ? loaded : new LevelIndex();
             _levelSelect = new LevelSelectModel(index);
             _initialized = true;
-        }
-
-        /// <summary>
-        /// GDD: results is entered when the room is won. Only while actually playing — the
-        /// demo room behind Title can win too, and that must not yank the player into a
-        /// results screen for a room they never chose to play.
-        /// </summary>
-        void CheckForWin()
-        {
-            if (_stack.Current == AppScreen.Playing && Driver.World.IsWon)
-                _stack.Go(AppScreen.Results);
         }
 
         void HandleInput()
@@ -122,9 +112,7 @@ namespace KeepyUppy.Runtime
             if (id == null) return;
             if (!LevelSource.TryLoad(id, out LevelData level)) return;
 
-            SimWorld world = Driver.World;
-            LevelLoader.Apply(level, world, out Vector2 balloonSpawn, out Vector2 playerSpawn);
-            world.Configure(balloonSpawn, Vector2.zero, playerSpawn, Driver.Keyboard, SimBootstrap.Seed);
+            LevelLoader.ApplyAndConfigure(level, Driver.World, Driver.Keyboard, SimBootstrap.Seed);
 
             _stack.Go(AppScreen.Playing);
         }

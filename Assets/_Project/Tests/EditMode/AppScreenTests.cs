@@ -106,5 +106,72 @@ namespace KeepyUppy.SimTests
 
             Assert.AreEqual(0, changes);
         }
+
+        [Test]
+        public void ObserveWinEntersResultsOnTheRisingEdgeWhilePlaying()
+        {
+            var stack = new ScreenStack();
+            stack.Go(AppScreen.Playing);
+
+            stack.ObserveWin(false);
+            Assert.AreEqual(AppScreen.Playing, stack.Current, "not yet won");
+
+            stack.ObserveWin(true);
+            Assert.AreEqual(AppScreen.Results, stack.Current);
+        }
+
+        [Test]
+        public void ObserveWinDoesNotReenterResultsWhileStillWon()
+        {
+            // This is the bug the fix addresses: SimWorld.IsWon stays true until the room's
+            // own win-hold finishes, which cannot happen while Results has paused the sim.
+            // A level-triggered check (just "IsWon && Current == Playing") re-enters Results
+            // the instant Back() reaches Playing, before a single step can run, and the
+            // player is stuck bouncing between the two screens forever. Edge detection is
+            // what stops that: the level staying true after the edge must be a no-op.
+            var stack = new ScreenStack();
+            stack.Go(AppScreen.Playing);
+            stack.ObserveWin(true);
+            Assert.AreEqual(AppScreen.Results, stack.Current);
+
+            stack.Back();
+            Assert.AreEqual(AppScreen.Playing, stack.Current, "back from results resumes play");
+
+            stack.ObserveWin(true);
+
+            Assert.AreEqual(AppScreen.Playing, stack.Current,
+                "IsWon never dropped, so this is not a new win - must not re-enter Results");
+        }
+
+        [Test]
+        public void ObserveWinDoesNothingOffThePlayingScreen()
+        {
+            var stack = new ScreenStack();
+            // Still on Title - the demo room behind it winning must not pull up Results for
+            // a room the player never chose to play.
+            stack.ObserveWin(true);
+
+            Assert.AreEqual(AppScreen.Title, stack.Current);
+        }
+
+        [Test]
+        public void ObserveWinEntersResultsAgainOnASecondGenuineWin()
+        {
+            var stack = new ScreenStack();
+            stack.Go(AppScreen.Playing);
+
+            stack.ObserveWin(true);
+            Assert.AreEqual(AppScreen.Results, stack.Current);
+
+            stack.Back();
+            Assert.AreEqual(AppScreen.Playing, stack.Current);
+
+            // The room genuinely restarted and IsWon dropped back to false before rising
+            // again - a second win, and it must be recognised as one.
+            stack.ObserveWin(false);
+            stack.ObserveWin(true);
+
+            Assert.AreEqual(AppScreen.Results, stack.Current);
+        }
     }
 }
