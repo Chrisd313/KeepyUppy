@@ -67,6 +67,7 @@ namespace KeepyUppy.Runtime
 
             BuildCamera();
             BuildTileViews(world.Grid);
+            BuildEntityViews(world);
             BuildBalloonView(world.Balloon);
             BuildPlayerView(world.Player);
 
@@ -237,6 +238,15 @@ namespace KeepyUppy.Runtime
             root.transform.SetParent(transform, false);
 
             root.AddComponent<TileViewSync>().Grid = grid;
+        }
+
+        /// <summary>Hazard quads follow the entities, which move every step (GDD 9).</summary>
+        void BuildEntityViews(SimWorld world)
+        {
+            var root = new GameObject("Entities");
+            root.transform.SetParent(transform, false);
+
+            root.AddComponent<EntityViewSync>().World = world;
         }
 
         void BuildBalloonView(BalloonBody balloon)

@@ -406,6 +406,43 @@ Spikes, saws, crushers, moving platforms, disappearing floors, conveyors, ice, o
 | **Vacuum intakes / fans** | `v_air` zones; hazard when on, tool when switchable, puzzle when timed | Best dual-purpose object in the game |
 | **The false exit** | Slides two tiles left as the balloon arrives | Mandatory |
 
+### 9.2a Implementation — 2026-08-24
+
+Three of the above are simulated: **saw** (generic tier, path-following, lethal to both),
+**lamp** (the sunbeam; sustained exposure pops the balloon) and **fan** (an air zone, not a
+wind system of its own — GDD 6.2 has only one). The cat is deferred: "tracks, waits, lunges"
+is a behaviour tree, and it wants the mover working underneath it first.
+
+**Entity position is a pure function of the step counter**, evaluated from scratch each step
+rather than advanced by `+= v * dt`. That single decision means attempt 40 replays attempt 1
+by construction rather than by care (6.1), makes restart free — there is no motion state to
+unwind, so the 8 budget is untouched — and lets any step be asked for out of order, which is
+what the spec's phase-5 rewind and ghost trails will need. Anything that *cannot* be written
+this way carries explicit state and must join the replay-equality test in the same commit;
+the lamp's exposure is the first such case.
+
+Kill volumes are capsules — a segment plus a radius — so a saw is a zero-length one and a
+lamp beam is a long one. One shape means the 8 fairness shrink has a single call site, as it
+does for tiles.
+
+Lamp exposure is **unbroken**: leaving the beam resets it. A countdown that remembered you
+would force leaving the room rather than moving within it, which is a different and worse
+hazard than the one 9.2 describes.
+
+Entities are **lethal but passable** for now. A saw kills what touches it; nothing pushes a
+body. Crushers and moving platforms need moving-solid collision, and "what happens when a
+platform pushes you into a spike" is a design question rather than a coding one — its own
+session, alongside the triggers and links 9.3 needs.
+
+`start_state: dormant` is honoured now, so a level authored with a dormant hazard behaves;
+nothing arms it yet, because triggers do not exist.
+
+An entity type this build does not understand loads inert and is counted, never dropped. A
+level file outlives any one build, and an editor that silently deletes what it cannot parse
+is not trustworthy.
+
+---
+
 ### 9.3 Betrayal traps
 
 Every world needs at least two. The pattern is always the same: **something dormant, armed by the player committing.**
@@ -746,4 +783,6 @@ Independent of premise, and bigger than it looks. A face makes every pop hurt, m
 | 2026-08-22 | **Dropped URP for the built-in render pipeline** | Worth 6.31 MB of an 11.81 MB WebGL payload — 3.51 MB of it wasm, not assets. The game draws untextured quads through a single unlit shader; URP's post-processing kit (film grain, blue noise, SMAA, UberPost) was the entire asset payload, and it forced the physics and terrain modules back into the build. Taken now rather than after the art pass, when it would have been far more expensive. Cost: no 2D lights without reversing this. |
 | 2026-08-22 | Unity splash disabled, managed stripping High, engine code stripping on, WebGL exceptions off | §17.2 mitigations. Applied as code in `WebGLBuild.ConfigureForWeb` rather than as editor settings, so the shipping configuration is version-controlled and reproducible. Exceptions-off is a real tradeoff: smallest and fastest, but a runtime error in the wild is much harder to diagnose. Revisit before public release. |
 | 2026-08-22 | Package manifest cut from 44 to 16 | "Remove every unused package" (§17.2). Physics **and Physics2D** both went — the balloon and player are hand-integrated with custom swept collision per §6.1, so Unity physics was never used at all. uGUI went with URP; the dev panels are IMGUI. |
+| 2026-08-24 | **Entity motion is derived from the step counter, never accumulated** | `position = f(step)` makes GDD 6.1 replay-equality structural rather than a thing to be careful about, costs nothing at restart, and is what later makes rewind and ghost trails (spec phase 5) possible at all. The constraint it imposes — reactive hazards like the cat need explicit state and explicit test coverage — is the price, and it is worth paying. |
+| 2026-08-24 | Moving hazards are lethal but passable; nothing pushes a body yet | Crushers and moving platforms need moving-solid collision, which raises a design question (a platform pushing the player into a spike) rather than only an implementation one. Deferred to the session that also does triggers and links, since GDD 9.3 needs both. |
 | 2026-08-22 | Hazard tiles block whatever they do *not* kill, and are transparent to whatever they do | A tile cannot both stop a body and pop it: collision holds the body outside, so the §8-mandated *smaller-than-visual* kill volume would never be reached. The balloon flies into a spike and pops; the player lands on the same spike and is killed by a volume that bleeds slightly through its surface. |

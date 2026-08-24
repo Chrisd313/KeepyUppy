@@ -1,4 +1,5 @@
 using KeepyUppy.InputLayer;
+using KeepyUppy.Sim.Entities;
 using UnityEngine;
 
 namespace KeepyUppy.Sim
@@ -17,6 +18,9 @@ namespace KeepyUppy.Sim
         public readonly BalloonBody Balloon = new BalloonBody();
         public readonly PlayerBody Player = new PlayerBody();
         public readonly PlayerVerbs Verbs = new PlayerVerbs();
+
+        /// <summary>Moving hazards (GDD 9). Empty until a level supplies some.</summary>
+        public readonly EntityField Entities = new EntityField();
 
         public BalloonTuning Tuning = BalloonTuning.Default;
         public PlayerTuning PlayerTuning = PlayerTuning.Default;
@@ -111,6 +115,11 @@ namespace KeepyUppy.Sim
             Hits.Tuning = Tuning;
             Hits.Reset();
 
+            // Entity motion is derived from the step counter, so this only clears the state
+            // that genuinely accumulates — a lamp's exposure (EntityPath).
+            Entities.Reset();
+            Entities.Step(0, Air);
+
             Input?.ResetIntents();
 
             IsDead = false;
@@ -166,6 +175,10 @@ namespace KeepyUppy.Sim
             // step or a live tuning-panel edit would never reach ApplyHit.
             Hits.Tuning = Tuning;
 
+            // Hazards move before either body does, so a saw and the balloon it catches are
+            // contemporaries rather than a frame apart.
+            Entities.Step(step, Air);
+
             if (HasPlayer) StepPlayer();
             if (!IsDead) StepBalloon();
 
@@ -189,6 +202,13 @@ namespace KeepyUppy.Sim
 
             if (Hazards.PlayerOverlapsLethal(Grid, Player.Position, Player.HalfWidth,
                                              Player.HalfHeight, Tuning.hazardPopRadiusShrink))
+            {
+                Kill(DeathCause.PlayerHitHazard);
+                return;
+            }
+
+            if (Entities.ResolvePlayer(Player.Position, Player.HalfWidth, Player.HalfHeight,
+                                       Tuning.hazardPopRadiusShrink))
             {
                 Kill(DeathCause.PlayerHitHazard);
                 return;
@@ -218,6 +238,15 @@ namespace KeepyUppy.Sim
 
             if (Hazards.BalloonOverlapsLethal(Grid, Balloon.Position, Balloon.Radius,
                                               Tuning.hazardPopRadiusShrink))
+            {
+                Kill(DeathCause.BalloonHitHazard);
+                return;
+            }
+
+            // Runs even on the step the balloon dies to something else: a lamp's exposure is
+            // aged inside, and skipping it would make the count depend on the death order.
+            if (Entities.ResolveBalloon(Balloon.Position, Balloon.Radius,
+                                        Tuning.hazardPopRadiusShrink))
             {
                 Kill(DeathCause.BalloonHitHazard);
                 return;

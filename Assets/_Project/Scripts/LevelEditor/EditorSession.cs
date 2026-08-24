@@ -42,10 +42,17 @@ namespace KeepyUppy.LevelEditing
         /// <summary>Unsaved changes exist. Shown in the status bar; never blocks anything.</summary>
         public bool Dirty { get; private set; }
 
-        /// <summary>Entity types offered by the palette. Data only — none of them do anything yet.</summary>
+        /// <summary>
+        /// Entity types offered by the palette.
+        ///
+        /// The first three are simulated (GDD 9.2). The rest are placeable and round-trip
+        /// through the file, but have no behaviour yet — the props are GDD 10 and the cat is
+        /// a behaviour tree of its own. EntityFactory decides what actually runs; this list
+        /// only decides what can be placed.
+        /// </summary>
         public static readonly string[] EntityTypes =
         {
-            "saw", "cat", "fan", "prop_leafblower", "prop_trampoline", "prop_tape",
+            "saw", "lamp", "fan", "cat", "prop_leafblower", "prop_trampoline", "prop_tape",
         };
 
         public void Load(LevelData level)

@@ -1,3 +1,4 @@
+using KeepyUppy.Sim.Entities;
 using UnityEngine;
 
 namespace KeepyUppy.Sim.Level
@@ -21,6 +22,7 @@ namespace KeepyUppy.Sim.Level
             world.Grid.LoadRows(level.tiles ?? new string[0]);
 
             LoadZones(level, world.Air);
+            LoadEntities(level, world.Entities, world.Air);
 
             balloonSpawn = ToVector(level.spawn?.balloon, new Vector2(6f, 13f));
             playerSpawn = ToVector(level.spawn?.player, new Vector2(4f, 2f));
@@ -49,6 +51,25 @@ namespace KeepyUppy.Sim.Level
                     new Rect(r[0], r[1], r[2], r[3]),
                     new Vector2(zone.@params?.vx ?? 0f, zone.@params?.vy ?? 0f),
                     zone.start_state != "off"));
+            }
+        }
+
+        /// <summary>
+        /// Entities, in file order. Order is load-bearing: it fixes the tick and kill order
+        /// (GDD 6.1), so a re-ordered file is a different — but still deterministic — level.
+        ///
+        /// Fans are added after the zone pass so their air zones sit at the end of the field,
+        /// where the entity field can keep republishing them as they move.
+        /// </summary>
+        static void LoadEntities(LevelData level, EntityField entities, AirField air)
+        {
+            entities.Clear();
+            if (level.entities == null) return;
+
+            foreach (LevelEntity data in level.entities)
+            {
+                SimEntity entity = EntityFactory.Create(data);
+                if (entity != null) entities.Add(entity, air);
             }
         }
 
