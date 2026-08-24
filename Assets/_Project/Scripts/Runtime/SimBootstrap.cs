@@ -119,16 +119,10 @@ namespace KeepyUppy.Runtime
         {
             _levelSource = new FileLevelSource();
 
-            // The manifest decides what is in the game. Seeded alongside the level, but only
-            // when there is no manifest yet - that is the one case that means a genuinely fresh
-            // clone. Once a manifest exists it is authoritative, and it may no longer list
-            // w1_01; reseeding that file behind its back would write a level nothing references.
-            if (!_levelSource.TryLoadIndex(out LevelIndex index))
-            {
-                index = LevelIndex.Default();
-                _levelSource.SaveIndex(index);
-                _levelSource.SaveIfAbsent(StartingLevel, SeedLevel());
-            }
+            // The manifest decides what is in the game. The level seed only runs when
+            // TryPrepareIndex reports a genuinely fresh project - see its own comment for why.
+            bool freshProject = TryPrepareIndex(_levelSource, out LevelIndex index);
+            if (freshProject) _levelSource.SaveIfAbsent(StartingLevel, SeedLevel());
 
             // The starting level is the manifest's first, so adding a level before w1_01 in
             // the editor changes what the game boots into - which is what a level list is for.
@@ -146,6 +140,25 @@ namespace KeepyUppy.Runtime
 
             _level = level;
             LevelLoader.Apply(level, world, out balloonSpawn, out playerSpawn);
+        }
+
+        /// <summary>
+        /// Loads the manifest, writing <see cref="LevelIndex.Default"/> when none exists yet.
+        /// Returns true only in that no-manifest case, meaning "this is a fresh project, seed
+        /// the starting level too" - a manifest that already exists is authoritative and may no
+        /// longer list <see cref="StartingLevel"/>, so it must never be resurrected on disk.
+        ///
+        /// Public and static so this decision - the part of boot most likely to regress
+        /// silently - is reachable from an EditMode test without a scene. Do not fold it back
+        /// into <see cref="LoadLevel"/>; that is what made the bug it fixes untestable.
+        /// </summary>
+        public static bool TryPrepareIndex(ILevelSource source, out LevelIndex index)
+        {
+            if (source.TryLoadIndex(out index)) return false;
+
+            index = LevelIndex.Default();
+            source.SaveIndex(index);
+            return true;
         }
 
         /// <summary>

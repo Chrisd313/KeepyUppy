@@ -109,14 +109,24 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
-        public void AnExistingManifestThatHasMovedPastTheStartingLevelIsNotReseeded()
+        public void TryPrepareIndexSeedsOnlyAFreshProject()
         {
-            // SimBootstrap.LoadLevel is a private instance method on a MonoBehaviour and is
-            // not reachable from an EditMode test without a scene, so this pins the guard
-            // clause it contains rather than the method itself: the w1_01 seed only runs
-            // inside the `!TryLoadIndex` branch, never once a manifest already exists. A
-            // manifest that no longer lists w1_01 must not have that file resurrected behind
-            // its back - that was the bug (see task-7-8-report.md, fix section).
+            // No manifest at all is the only case that means "fresh clone" - TryPrepareIndex
+            // must say so, and must have written the default manifest itself.
+            bool freshProject = SimBootstrap.TryPrepareIndex(_source, out LevelIndex index);
+
+            Assert.IsTrue(freshProject, "an absent manifest must be reported as a fresh project");
+            Assert.IsTrue(_source.TryLoadIndex(out LevelIndex written),
+                          "TryPrepareIndex must have written the default manifest to disk");
+            CollectionAssert.AreEqual(index.AllLevels(), written.AllLevels());
+        }
+
+        [Test]
+        public void TryPrepareIndexTrustsAnExistingManifestThatHasMovedPastTheStartingLevel()
+        {
+            // A manifest that no longer lists w1_01 is authoritative and must not be treated
+            // as a fresh project - that was the bug this method exists to make impossible to
+            // reintroduce silently (see task-7-8-report.md, fix round 2).
             var manifest = new LevelIndex
             {
                 version = LevelIndex.CurrentVersion,
@@ -127,11 +137,14 @@ namespace KeepyUppy.SimTests
             };
             _source.SaveIndex(manifest);
 
-            if (!_source.TryLoadIndex(out LevelIndex _))
-            {
-                _source.SaveIfAbsent(SimBootstrap.StartingLevel, SimBootstrap.SeedLevel());
-            }
+            bool freshProject = SimBootstrap.TryPrepareIndex(_source, out LevelIndex index);
 
+            Assert.IsFalse(freshProject, "an existing manifest must not be reported as fresh");
+            CollectionAssert.AreEqual(new[] { "w1_02" }, index.worlds[0].levels,
+                                      "the existing manifest must be returned untouched");
+
+            // TryPrepareIndex only ever touches the manifest file, never a level file; the
+            // caller (LoadLevel) is the one that turns "not fresh" into "do not seed".
             CollectionAssert.DoesNotContain(_source.List(), SimBootstrap.StartingLevel);
         }
     }
