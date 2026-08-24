@@ -118,14 +118,16 @@ namespace KeepyUppy.Runtime
         void LoadLevel(SimWorld world, out Vector2 balloonSpawn, out Vector2 playerSpawn)
         {
             _levelSource = new FileLevelSource();
-            _levelSource.SaveIfAbsent(StartingLevel, SeedLevel());
 
-            // The manifest decides what is in the game. Seeded alongside the level so a fresh
-            // clone has a coherent level list rather than a room nothing lists.
+            // The manifest decides what is in the game. Seeded alongside the level, but only
+            // when there is no manifest yet - that is the one case that means a genuinely fresh
+            // clone. Once a manifest exists it is authoritative, and it may no longer list
+            // w1_01; reseeding that file behind its back would write a level nothing references.
             if (!_levelSource.TryLoadIndex(out LevelIndex index))
             {
                 index = LevelIndex.Default();
                 _levelSource.SaveIndex(index);
+                _levelSource.SaveIfAbsent(StartingLevel, SeedLevel());
             }
 
             // The starting level is the manifest's first, so adding a level before w1_01 in

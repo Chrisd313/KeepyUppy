@@ -107,5 +107,32 @@ namespace KeepyUppy.SimTests
 
             CollectionAssert.IsEmpty(LevelIndexValidator.Validate(index, _source.List()));
         }
+
+        [Test]
+        public void AnExistingManifestThatHasMovedPastTheStartingLevelIsNotReseeded()
+        {
+            // SimBootstrap.LoadLevel is a private instance method on a MonoBehaviour and is
+            // not reachable from an EditMode test without a scene, so this pins the guard
+            // clause it contains rather than the method itself: the w1_01 seed only runs
+            // inside the `!TryLoadIndex` branch, never once a manifest already exists. A
+            // manifest that no longer lists w1_01 must not have that file resurrected behind
+            // its back - that was the bug (see task-7-8-report.md, fix section).
+            var manifest = new LevelIndex
+            {
+                version = LevelIndex.CurrentVersion,
+                worlds = new[]
+                {
+                    new LevelWorld { id = "w1", name = "One", levels = new[] { "w1_02" } },
+                },
+            };
+            _source.SaveIndex(manifest);
+
+            if (!_source.TryLoadIndex(out LevelIndex _))
+            {
+                _source.SaveIfAbsent(SimBootstrap.StartingLevel, SimBootstrap.SeedLevel());
+            }
+
+            CollectionAssert.DoesNotContain(_source.List(), SimBootstrap.StartingLevel);
+        }
     }
 }
