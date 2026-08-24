@@ -133,14 +133,14 @@ namespace KeepyUppy.SimTests
             // If a default is retuned, the GDD table must move with it (CLAUDE.md). This test
             // is what makes that a conscious edit rather than a silent drift.
             BalloonTuning b = BalloonTuning.Default;
-            Assert.AreEqual(9.8f, b.gravity, 1e-6f, "GDD 6.4 gravity");
-            Assert.AreEqual(2.45f, b.dragKy, 1e-6f, "GDD 6.4 drag_ky");
-            Assert.AreEqual(0.9f, b.dragKx, 1e-6f, "GDD 6.4 drag_kx");
+            Assert.AreEqual(1.0f, b.gravity, 1e-6f, "GDD 6.4 gravity");
+            Assert.AreEqual(0.25f, b.dragKy, 1e-6f, "GDD 6.4 drag_ky");
+            Assert.AreEqual(0.09f, b.dragKx, 1e-6f, "GDD 6.4 drag_kx");
             Assert.AreEqual(0.75f, b.restitutionWall, 1e-6f, "GDD 6.4 restitution_wall");
             Assert.AreEqual(0.5f, b.restitutionPlayerPassive, 1e-6f, "GDD 4.2 passive restitution");
-            Assert.AreEqual(9.0f, b.bumpVelocity, 1e-6f, "GDD 6.4 bump_velocity");
+            Assert.AreEqual(20.0f, b.bumpVelocity, 1e-6f, "GDD 6.4 bump_velocity");
             Assert.AreEqual(0.3f, b.minBounceSpeed, 1e-6f, "GDD 6.4 min_bounce_speed");
-            Assert.AreEqual(16f, b.maxSpeed, 1e-6f, "GDD 6.4 max_speed");
+            Assert.AreEqual(24f, b.maxSpeed, 1e-6f, "GDD 6.4 max_speed");
             Assert.AreEqual(40f, b.aimOffsetMaxAngle, 1e-6f, "GDD 6.5 aim_offset_max_angle");
 
             PlayerTuning p = PlayerTuning.Default;
@@ -148,6 +148,11 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(3.2f, p.jumpHeightTiles, 1e-6f, "GDD 5.7 jump height");
             Assert.AreEqual(6, p.coyoteFrames, "GDD 5.7 coyote frames");
             Assert.AreEqual(10, p.jumpBufferFrames, "GDD 5.7 input buffer");
+            Assert.AreEqual(40f, p.gravity, 1e-6f, "GDD 5.7 gravity");
+            Assert.AreEqual(0.39f, p.jumpCutMultiplier, 1e-6f, "GDD 5.7 jump cut on release");
+
+            // The player is heavy and the balloon is not; 6.4 makes that split the whole feel.
+            Assert.Greater(p.gravity, b.gravity * 10f, "the player/balloon gravity contrast collapsed");
         }
 
         static void AssertBits(float expected, float actual, string field)

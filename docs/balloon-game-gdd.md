@@ -250,7 +250,7 @@ Starting values. Every one of these is a slider in the tuning panel (§18).
 |---|---|---|
 | `gravity` | 1.0 m/s² | **No longer shared with the player** (who runs at 40). Read it as net weight after buoyancy. Tuned 2026-08-22, was 9.8. |
 | `drag_ky` | 0.25 | → terminal fall ≈ 2.0 m/s at Nominal, unchanged. Tuned 2026-08-22, was 2.45. |
-| `drag_kx` | 0.9 | drifts ~3–4 tiles before settling |
+| `drag_kx` | 0.09 | drifts ~3–4 tiles before settling. Tuned 2026-08-24, was 0.9 — see below. |
 | Player terminal fall | ~18 m/s | the contrast *is* the feel |
 | `restitution_wall` | 0.75 | |
 | `restitution_player_passive` | 0.5 | see Law 4.2 |
@@ -261,7 +261,7 @@ Starting values. Every one of these is a slider in the tuning panel (§18).
 | `spike_speed` | 14.0 | 0.6 s cooldown, screen shake |
 | `aim_offset_max_angle` | 40° | see §6.5 |
 | `min_bounce_speed` | 0.3 m/s | below this, no bounce — kills jitter |
-| `max_speed` | 16 m/s | tunnelling guard |
+| `max_speed` | 24 m/s | sanity guard; collision is swept (6.1), so this is not what prevents tunnelling. Raised 2026-08-24 from 16, which silently capped `bump_velocity`. |
 | `aim_side_angle` | 55° | §5.5 aim table, left/right off vertical |
 | `aim_up_power_bonus` | +15% | §5.5 aim table, straight up |
 | `context_hold_frames` | 9 (150 ms) | §5.5 tap/hold split: under = palm, over = spike charge |
@@ -288,6 +288,14 @@ so raising `bump_velocity` alone is nearly useless — reaching 2 m of rise at t
 With drag that low, `bump_velocity` becomes a real lever again, hence 9.0 → 20.0. **Retune the drag pair before the bump speed, not after** — at the old drag the bump slider does almost nothing.
 
 Watch this against §4.3: gravity is the clock, and a very low balloon gravity weakens the room's time pressure. This is the knob to check first if levels start feeling slack.
+
+#### Why `drag_kx` and `max_speed` followed — 2026-08-24
+
+Two consequences of the 2026-08-22 retune that the tables did not catch at the time.
+
+**`drag_kx` had to fall with `drag_ky`.** §6.3's split is *vertical drag high, horizontal drag low* — that asymmetry is what lets the balloon cross the room instead of stalling above where it was hit. Dropping `drag_ky` 2.45 → 0.25 while leaving `drag_kx` at 0.9 inverted it: horizontal drag became 3.6× vertical, the exact opposite of the rule. Restoring the original 0.9 : 2.45 ratio against the new `drag_ky` gives 0.09. **Whenever `drag_ky` moves, check `drag_kx` against it** — the ratio is the design, not either number.
+
+**`max_speed` was silently eating the bump.** `ApplyHit` clamps total speed, so `bump_velocity` 20 left the balloon at 16 — the slider did nothing above the ceiling, and a *running* bump lost inherited horizontal too, because the clamp scales the whole vector rather than truncating one axis (3.0 → 2.37 m/s at run speed). Raised to 24. This is safe because §6.1 collision is swept: the cast finds the wall wherever it is, so `max_speed` is a sanity bound on the tuning panel, not the tunnelling defence. The tunnelling test runs at whatever `max_speed` currently is, so it re-verifies the new ceiling automatically.
 
 **Set velocity, don't add force.** Adding means a bump's outcome depends on the balloon's incoming velocity, so the same input produces different results. Poison for a memorisation game.
 

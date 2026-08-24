@@ -95,16 +95,16 @@ namespace KeepyUppy.Sim
 
         public static BalloonTuning Default => new BalloonTuning
         {
-            gravity = 9.8f,
-            dragKy = 2.45f,
-            dragKx = 0.9f,
+            gravity = 1.0f,
+            dragKy = 0.25f,
+            dragKx = 0.09f,
 
             restitutionWall = 0.75f,
             restitutionPlayerPassive = 0.5f,
             minBounceSpeed = 0.3f,
-            maxSpeed = 16f,
+            maxSpeed = 24f,
 
-            bumpVelocity = 9.0f,
+            bumpVelocity = 20.0f,
             bumpInheritY = 0.35f,
             bumpInheritX = 0.5f,
             palmSpeed = 6.0f,

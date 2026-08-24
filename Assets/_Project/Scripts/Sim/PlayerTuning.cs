@@ -60,7 +60,7 @@ namespace KeepyUppy.Sim
         {
             runSpeed = 6.0f,
             jumpHeightTiles = 3.2f,
-            gravity = 9.8f,
+            gravity = 40f,
             terminalFallSpeed = 18f,
             coyoteFrames = 6,
             jumpBufferFrames = 10,
@@ -70,7 +70,7 @@ namespace KeepyUppy.Sim
 
             groundAccelFrames = 4,
             airAccelFrames = 8,
-            jumpCutMultiplier = 0.5f,
+            jumpCutMultiplier = 0.39f,
             deathRestartFrames = 6,
         };
 
