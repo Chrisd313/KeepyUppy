@@ -52,6 +52,15 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void RowsMatchesTheBriefsWorkedExampleForA()
+        {
+            // GlyphsFitTheirCell cannot fail by construction - this is the assertion that
+            // would actually catch a transposed or mirrored font. Pinned against the brief's
+            // own worked example: row 0 at the top, bit 4 at the left.
+            Assert.AreEqual(0b01110_10001_10001_11111_10001_10001_10001UL, BitmapFont.Rows('A'));
+        }
+
+        [Test]
         public void GlyphsFitTheirCell()
         {
             // Every glyph must fit in 5x7, or the atlas and the renderer disagree.

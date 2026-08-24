@@ -27,7 +27,15 @@ namespace KeepyUppy.Runtime
         private const ulong MissingGlyph = (1UL << (GlyphWidth * GlyphHeight)) - 1;
 
         private static readonly Dictionary<char, ulong> Glyphs = new Dictionary<char, ulong>();
+        private static readonly Dictionary<char, int> Indices = new Dictionary<char, int>();
         private static Texture2D _atlas;
+
+        /// <summary>
+        /// The atlas cell holding the "missing glyph" filled box — one past the last real
+        /// character, so <see cref="GlyphCount"/> always covers it. <see cref="GlyphIndex"/>
+        /// returns this for any character <see cref="Rows"/> would also render as missing.
+        /// </summary>
+        private static int MissingGlyphIndex => Source.Length;
 
         // One entry per character. Each string is GlyphHeight rows of GlyphWidth chars,
         // '1' = pixel on, '0' = pixel off, row 0 first (top). Fix a letterform here.
@@ -505,8 +513,24 @@ namespace KeepyUppy.Runtime
 
         static BitmapFont()
         {
-            foreach (var (ch, rows) in Source)
+            for (int i = 0; i < Source.Length; i++)
+            {
+                var (ch, rows) = Source[i];
                 Glyphs[ch] = Pack(rows);
+                Indices[ch] = i;
+            }
+        }
+
+        /// <summary>
+        /// The bit position of one glyph pixel within its packed ulong: row 0 (top) occupies
+        /// the highest bits, row GlyphHeight-1 (bottom) the lowest; within a row, column 0
+        /// (left) is the row's high bit. Both Pack and Atlas must agree on this or the
+        /// dictionary and the texture desync silently. Shared here so there is only one place
+        /// to get it right.
+        /// </summary>
+        private static int BitIndex(int row, int col)
+        {
+            return (GlyphHeight - 1 - row) * GlyphWidth + (GlyphWidth - 1 - col);
         }
 
         private static ulong Pack(string[] rows)
@@ -520,10 +544,7 @@ namespace KeepyUppy.Runtime
                 for (int col = 0; col < GlyphWidth; col++)
                 {
                     if (line[col] == '1')
-                    {
-                        int bitIndex = (GlyphHeight - 1 - row) * GlyphWidth + (GlyphWidth - 1 - col);
-                        bits |= 1UL << bitIndex;
-                    }
+                        bits |= 1UL << BitIndex(row, col);
                 }
             }
 
@@ -556,17 +577,36 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
-        /// A single-row RGBA32 atlas, one GlyphWidth-wide glyph cell after another in table
-        /// order, built once and cached. Point filtered, no mipmaps, clamped: the rendering
-        /// rules in CLAUDE.md apply to text as much as to tiles.
+        /// Total glyph cells in <see cref="Atlas"/>, including the trailing missing-glyph
+        /// cell. The atlas is exactly <c>GlyphCount * GlyphWidth</c> pixels wide.
+        /// </summary>
+        public static int GlyphCount => Source.Length + 1;
+
+        /// <summary>
+        /// The cell index of a character within <see cref="Atlas"/> — laid out in one row,
+        /// so the cell's left edge is at pixel <c>GlyphIndex(c) * GlyphWidth</c>. Lowercase
+        /// maps to uppercase, matching <see cref="Rows"/>. A character with no glyph returns
+        /// the same trailing cell <see cref="Rows"/> renders as a filled box for.
+        /// </summary>
+        public static int GlyphIndex(char c)
+        {
+            char normalized = Normalize(c);
+            return Indices.TryGetValue(normalized, out int index) ? index : MissingGlyphIndex;
+        }
+
+        /// <summary>
+        /// A single-row RGBA32 atlas: one GlyphWidth-wide cell per table entry in table order,
+        /// plus one trailing cell (index <see cref="GlyphCount"/> - 1) holding the filled
+        /// missing-glyph box. Built once and cached. Point filtered, no mipmaps, clamped: the
+        /// rendering rules in CLAUDE.md apply to text as much as to tiles.
         /// </summary>
         public static Texture2D Atlas()
         {
             if (_atlas != null)
                 return _atlas;
 
-            int glyphCount = Source.Length;
-            int width = glyphCount * GlyphWidth;
+            int cellCount = GlyphCount;
+            int width = cellCount * GlyphWidth;
             int height = GlyphHeight;
 
             var texture = new Texture2D(width, height, TextureFormat.RGBA32, mipChain: false)
@@ -580,9 +620,9 @@ namespace KeepyUppy.Runtime
             var transparent = new Color32(0, 0, 0, 0);
             var opaque = new Color32(255, 255, 255, 255);
 
-            for (int i = 0; i < glyphCount; i++)
+            for (int i = 0; i < cellCount; i++)
             {
-                ulong bits = Glyphs[Source[i].Ch];
+                ulong bits = i < Source.Length ? Glyphs[Source[i].Ch] : MissingGlyph;
                 int cellX = i * GlyphWidth;
 
                 for (int row = 0; row < GlyphHeight; row++)
@@ -592,8 +632,7 @@ namespace KeepyUppy.Runtime
 
                     for (int col = 0; col < GlyphWidth; col++)
                     {
-                        int bitIndex = (GlyphHeight - 1 - row) * GlyphWidth + (GlyphWidth - 1 - col);
-                        bool on = (bits & (1UL << bitIndex)) != 0;
+                        bool on = (bits & (1UL << BitIndex(row, col))) != 0;
                         pixels[textureRow * width + cellX + col] = on ? opaque : transparent;
                     }
                 }
