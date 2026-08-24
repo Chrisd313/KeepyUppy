@@ -56,7 +56,6 @@ namespace KeepyUppy.Runtime
                 // silently skipping it, so there is nothing to special-case here.
                 char c = text[charIndex];
                 ulong bits = BitmapFont.Rows(c);
-                float charLeft = snappedOrigin.x + charIndex * BitmapFont.Advance * pixel;
 
                 for (int row = 0; row < BitmapFont.GlyphHeight; row++)
                 {
@@ -66,16 +65,35 @@ namespace KeepyUppy.Runtime
                                        + (BitmapFont.GlyphWidth - 1 - col);
                         if ((bits & (1UL << bitIndex)) == 0) continue;
 
-                        float x = charLeft + (col + 0.5f) * pixel;
-                        float y = snappedOrigin.y - (row + 0.5f) * pixel;
+                        Vector2 centre = PixelCentre(snappedOrigin, charIndex, row, col, pixel);
 
                         QuadView.Create(root.transform, $"px_{charIndex}_{row}_{col}", colour,
-                                         new Vector2(x, y), new Vector2(pixel, pixel), 0f);
+                                         centre, new Vector2(pixel, pixel), 0f);
                     }
                 }
             }
 
             return root;
+        }
+
+        /// <summary>
+        /// World-space centre of one glyph pixel: <paramref name="row"/>/<paramref name="col"/>
+        /// are the font's own coordinates (row 0 top, col 0 left; see <see cref="Draw"/>'s
+        /// remarks), <paramref name="charIndex"/> is the character's position in the string,
+        /// and <paramref name="origin"/> is the already-snapped top-left corner of the whole
+        /// string. Pulled out on its own — separate from the loop over lit bits — because it is
+        /// the one piece of this file that can regress silently: a sign flip here still compiles
+        /// and every other test still passes, it just draws upside down or mirrored. Public
+        /// rather than internal: the test assembly references this one by asmdef, but an
+        /// asmdef reference only grants access to public members — internal would need an
+        /// InternalsVisibleTo, which is more to maintain than one public method. <c>TextViewTests</c>
+        /// pins it directly instead of only observing it through quads in a scene.
+        /// </summary>
+        public static Vector2 PixelCentre(Vector2 origin, int charIndex, int row, int col, float pixel)
+        {
+            float x = origin.x + charIndex * BitmapFont.Advance * pixel + (col + 0.5f) * pixel;
+            float y = origin.y - (row + 0.5f) * pixel;
+            return new Vector2(x, y);
         }
 
         /// <summary>Tears down everything <see cref="Draw"/> built.</summary>
