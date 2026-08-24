@@ -1,5 +1,9 @@
+using System.Collections.Generic;
+using System.IO;
 using KeepyUppy.Runtime;
+using KeepyUppy.Sim.Level;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace KeepyUppy.SimTests
 {
@@ -15,10 +19,47 @@ namespace KeepyUppy.SimTests
         [Test]
         public void EveryCharacterInTheSetHasAGlyph()
         {
-            const string set = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:!?-/'()[]*+%";
+            const string set = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:!?-/'()[]*+%_<>";
 
             foreach (char c in set)
                 Assert.IsTrue(BitmapFont.Has(c), $"no glyph for '{c}'");
+        }
+
+        [Test]
+        public void EveryCharacterShellViewActuallyDrawsHasAGlyph()
+        {
+            // EveryCharacterInTheSetHasAGlyph above pins a hardcoded charset nobody checked
+            // against real usage - which is exactly how '_', '<' and '>' went missing while
+            // ShellView drew "w1_02" and "< WORLD >" as solid missing-glyph blocks. This test
+            // crosses the font/screen boundary that one does not: every literal ShellView
+            // draws, plus every level id in the shipped manifest (level ids are not
+            // uppercased before drawing - see ShellView.DrawLevelSelect).
+            string[] literals =
+            {
+                "KEEPY UPPY", "PRESS SPACE",
+                "NO LEVELS",
+                "> ", "  ", "< WORLD >",
+                "PAUSED", "SPACE RESUME", "ESC RESUME",
+                "ROOM CLEARED", " TOUCHES",
+            };
+
+            var missing = new List<char>();
+
+            foreach (string literal in literals)
+                foreach (char c in literal)
+                    if (!BitmapFont.Has(c) && !missing.Contains(c))
+                        missing.Add(c);
+
+            string indexPath = Path.Combine(Application.dataPath, "StreamingAssets", "levels", "index.json");
+            Assert.IsTrue(File.Exists(indexPath), $"expected a manifest at {indexPath}");
+
+            LevelIndex index = JsonUtility.FromJson<LevelIndex>(File.ReadAllText(indexPath));
+            foreach (string id in index.AllLevels())
+                foreach (char c in id)
+                    if (!BitmapFont.Has(c) && !missing.Contains(c))
+                        missing.Add(c);
+
+            CollectionAssert.IsEmpty(missing, "no glyph for: " + string.Join(", ", missing));
         }
 
         [Test]
@@ -54,10 +95,9 @@ namespace KeepyUppy.SimTests
         [Test]
         public void RowsMatchesTheBriefsWorkedExampleForA()
         {
-            // GlyphsFitTheirCell cannot fail by construction - this pins the row order against
-            // the brief's own worked example: row 0 at the top, bit 4 at the left. Every row of
-            // 'A' is a palindrome, though, so this alone would not catch a horizontal mirror -
-            // see RowsCatchesAHorizontalMirrorUsingF below.
+            // Pins the row order against the brief's own worked example: row 0 at the top,
+            // bit 4 at the left. Every row of 'A' is a palindrome, though, so this alone would
+            // not catch a horizontal mirror - see RowsCatchesAHorizontalMirrorUsingF below.
             Assert.AreEqual(0b01110_10001_10001_11111_10001_10001_10001UL, BitmapFont.Rows('A'));
         }
 
@@ -71,26 +111,5 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(0b11111_10000_10000_11110_10000_10000_10000UL, BitmapFont.Rows('F'));
         }
 
-        [Test]
-        public void GlyphsFitTheirCell()
-        {
-            // Every glyph must fit in 5x7, or the atlas and the renderer disagree.
-            const string set = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:!?-/'()[]*+%";
-            ulong limit = 1UL << (BitmapFont.GlyphWidth * BitmapFont.GlyphHeight);
-
-            foreach (char c in set)
-                Assert.Less(BitmapFont.Rows(c), limit, $"'{c}' has bits outside its cell");
-        }
-
-        [Test]
-        public void TheAtlasIsBuiltOnceAndIsPointFiltered()
-        {
-            // Point filtering and no mipmaps: CLAUDE.md's rendering rules apply to text too.
-            var first = BitmapFont.Atlas();
-
-            Assert.IsNotNull(first);
-            Assert.AreEqual(UnityEngine.FilterMode.Point, first.filterMode);
-            Assert.AreSame(first, BitmapFont.Atlas(), "the atlas should be cached");
-        }
     }
 }

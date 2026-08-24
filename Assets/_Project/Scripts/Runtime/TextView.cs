@@ -61,8 +61,7 @@ namespace KeepyUppy.Runtime
                 {
                     for (int col = 0; col < BitmapFont.GlyphWidth; col++)
                     {
-                        int bitIndex = (BitmapFont.GlyphHeight - 1 - row) * BitmapFont.GlyphWidth
-                                       + (BitmapFont.GlyphWidth - 1 - col);
+                        int bitIndex = BitmapFont.BitIndex(row, col);
                         if ((bits & (1UL << bitIndex)) == 0) continue;
 
                         Vector2 centre = PixelCentre(snappedOrigin, charIndex, row, col, pixel);
