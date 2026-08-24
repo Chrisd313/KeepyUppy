@@ -19,19 +19,19 @@ namespace KeepyUppy.Shell
     /// ever needs to know where "back" goes next - that mapping is fixed, not built from
     /// wherever the player happened to come from:
     ///
-    /// | Screen      | SimRuns | SimPaused | Back goes to |
-    /// |-------------|---------|-----------|--------------|
-    /// | Title       | true    | false     | Title (no-op)|
-    /// | LevelSelect | true    | false     | Title        |
-    /// | Playing     | true    | false     | LevelSelect  |
-    /// | Paused      | true    | true      | Playing      |
-    /// | Results     | true    | true      | Playing      |
+    /// | Screen      | SimPaused | Back goes to |
+    /// |-------------|-----------|--------------|
+    /// | Title       | false     | Title (no-op)|
+    /// | LevelSelect | false     | Title        |
+    /// | Playing     | false     | LevelSelect  |
+    /// | Paused      | true      | Playing      |
+    /// | Results     | true      | Playing      |
     ///
-    /// SimRuns is true everywhere: the title screen has the demo room running behind it, so
-    /// there is never a moment with no room at all. SimPaused is true only for Paused and
-    /// Results - both are overlays over a room that must hold still rather than tear down,
-    /// so that resuming (Back from Paused) or replaying (Back from Results) continues the
-    /// same run instead of restarting it.
+    /// The room behind the current screen is alive for every screen - the title screen has
+    /// the demo room running behind it, so there is never a moment with no room at all.
+    /// SimPaused is true only for Paused and Results - both are overlays over a room that
+    /// must hold still rather than tear down, so that resuming (Back from Paused) or
+    /// replaying (Back from Results) continues the same run instead of restarting it.
     /// </summary>
     public sealed class ScreenStack
     {
@@ -39,9 +39,6 @@ namespace KeepyUppy.Shell
 
         /// <summary>Edge state for <see cref="ObserveWin"/> - see its comment.</summary>
         bool _wasWon;
-
-        /// <summary>The room behind the current screen is alive - true for every screen.</summary>
-        public bool SimRuns => true;
 
         /// <summary>The room is held rather than advancing - true only for Paused and Results.</summary>
         public bool SimPaused => Current == AppScreen.Paused || Current == AppScreen.Results;
@@ -79,6 +76,17 @@ namespace KeepyUppy.Shell
             _wasWon = isWon;
 
             if (risingEdge && Current == AppScreen.Playing) Go(AppScreen.Results);
+        }
+
+        /// <summary>
+        /// Clears the win edge. Must be called whenever a new room is loaded into the world
+        /// that ObserveWin's isWon reads from (see ShellView.ConfirmLevelSelect) - otherwise
+        /// a stale true left over from the previous level would make ObserveWin see a win on
+        /// the new level's very first observed step as "not a rising edge" and skip Results.
+        /// </summary>
+        public void ResetWin()
+        {
+            _wasWon = false;
         }
 
         /// <summary>Follows the fixed back-mapping in the class comment. Title has nowhere to go.</summary>

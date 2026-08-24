@@ -17,7 +17,6 @@ namespace KeepyUppy.SimTests
             var stack = new ScreenStack();
 
             Assert.AreEqual(AppScreen.Title, stack.Current);
-            Assert.IsTrue(stack.SimRuns, "the title has the game running behind it");
             Assert.IsFalse(stack.SimPaused);
         }
 
@@ -29,8 +28,26 @@ namespace KeepyUppy.SimTests
             stack.Go(AppScreen.Playing);
             stack.Go(AppScreen.Paused);
 
-            Assert.IsTrue(stack.SimRuns, "the room is still there");
             Assert.IsTrue(stack.SimPaused, "it is just not advancing");
+        }
+
+        [Test]
+        public void PlayingCanReachPausedAndReturn()
+        {
+            // Regression: ShellView used to send Esc-during-play through Back(), which
+            // ScreenStack maps Playing -> LevelSelect, so Paused was reachable in the enum
+            // but nothing ever actually Go()'d there. ShellView now calls Go(Paused)
+            // explicitly for that key; this pins the round trip Go(Paused) depends on.
+            var stack = new ScreenStack();
+            stack.Go(AppScreen.Playing);
+
+            stack.Go(AppScreen.Paused);
+            Assert.AreEqual(AppScreen.Paused, stack.Current);
+            Assert.IsTrue(stack.SimPaused);
+
+            stack.Back();
+            Assert.AreEqual(AppScreen.Playing, stack.Current, "Esc-Esc round-trips");
+            Assert.IsFalse(stack.SimPaused);
         }
 
         [Test]
@@ -75,7 +92,6 @@ namespace KeepyUppy.SimTests
             stack.Go(AppScreen.Playing);
             stack.Go(AppScreen.Results);
 
-            Assert.IsTrue(stack.SimRuns);
             Assert.IsTrue(stack.SimPaused, "the cleared room is held, not torn down");
         }
 
@@ -152,6 +168,31 @@ namespace KeepyUppy.SimTests
             stack.ObserveWin(true);
 
             Assert.AreEqual(AppScreen.Title, stack.Current);
+        }
+
+        [Test]
+        public void ResetWinStopsAStaleWinFromSkippingResultsOnTheNextLevel()
+        {
+            // Selecting a new level does not itself flip IsWon back to false - that only
+            // happens when the room's own win-hold finishes, which cannot happen while
+            // Results has the sim paused. Without ResetWin, loading a new level while
+            // _wasWon is still true and winning on that level's very first observed step
+            // would compute risingEdge = true && !true = false and skip Results entirely.
+            var stack = new ScreenStack();
+            stack.Go(AppScreen.Playing);
+            stack.ObserveWin(true);
+            Assert.AreEqual(AppScreen.Results, stack.Current);
+
+            stack.Back();
+            Assert.AreEqual(AppScreen.Playing, stack.Current);
+
+            // Simulates ShellView.ConfirmLevelSelect loading a fresh level: IsWon is still
+            // true from the old room (nothing has reset it), but the new room's win is a
+            // genuine one and must still reach Results.
+            stack.ResetWin();
+            stack.ObserveWin(true);
+
+            Assert.AreEqual(AppScreen.Results, stack.Current);
         }
 
         [Test]

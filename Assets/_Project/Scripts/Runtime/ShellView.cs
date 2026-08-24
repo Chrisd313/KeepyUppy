@@ -51,7 +51,9 @@ namespace KeepyUppy.Runtime
             HandleInput();
 
             Driver.FastForward = _input.FastForwardHeld;
-            Driver.Paused = _stack.SimPaused;
+            // Own only the shell's pause reason - the editor owns EditorPaused separately
+            // (BootstrapEditorHost.SetSimPaused), so neither can stomp the other's freeze.
+            Driver.ShellPaused = _stack.SimPaused;
 
             RedrawIfNeeded();
         }
@@ -84,7 +86,12 @@ namespace KeepyUppy.Runtime
                     break;
 
                 case AppScreen.Playing:
-                    if (_input.Back) _stack.Back();
+                    // Esc during play pauses, it does not exit to the level select - see the
+                    // class comment on the Paused case. ScreenStack.Back()'s own
+                    // Playing -> LevelSelect mapping is left as-is (it is what an in-menu
+                    // "quit to select" action would use); this is the shell explicitly asking
+                    // for a different screen, not asking "back" to decide for it.
+                    if (_input.Back) _stack.Go(AppScreen.Paused);
                     break;
 
                 case AppScreen.Paused:
@@ -114,6 +121,9 @@ namespace KeepyUppy.Runtime
 
             LevelLoader.ApplyAndConfigure(level, Driver.World, Driver.Keyboard, SimBootstrap.Seed);
 
+            // A win carried over from whatever was playing before must not skip Results on
+            // this level's very first observed step - see ScreenStack.ResetWin.
+            _stack.ResetWin();
             _stack.Go(AppScreen.Playing);
         }
 
@@ -174,6 +184,10 @@ namespace KeepyUppy.Runtime
             string worldName = (_levelSelect.CurrentWorld?.name ?? "").ToUpperInvariant();
             TextView.Draw(parent, worldName, new Vector2(4f, 16f), SimPalette.Text, scale: 2);
 
+            // No scrolling and no clamp: past nine entries this list runs off the bottom of
+            // the 640x360 screen. Worlds are planned at ~10 levels (GDD), so this is a known
+            // future defect, not an oversight - w1 only has two levels today, which is why it
+            // hasn't been hit. Deliberately not fixed here; scrolling is deferred.
             IReadOnlyList<string> levels = _levelSelect.CurrentWorldLevels;
             float y = 13f;
             for (int i = 0; i < levels.Count; i++)
