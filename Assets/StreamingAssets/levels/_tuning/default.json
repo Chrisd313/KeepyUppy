@@ -25,6 +25,7 @@
         "armReachRadius": 1.399999976158142,
         "flutterAccel": 1.2000000476837159,
         "flutterFalloffSpeed": 3.0,
+        "exitAcceptBonus": 0.15000000596046449,
         "fastForwardFactor": 2
     },
     "player": {

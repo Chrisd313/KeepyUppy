@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using KeepyUppy.Runtime;
 using KeepyUppy.Sim;
 using NUnit.Framework;
@@ -154,6 +157,45 @@ namespace KeepyUppy.SimTests
 
             // The player is heavy and the balloon is not; 6.4 makes that split the whole feel.
             Assert.Greater(p.gravity, b.gravity * 10f, "the player/balloon gravity contrast collapsed");
+        }
+
+        [Test]
+        public void ShippedDefaultProfile_CarriesEveryTuningField()
+        {
+            // JsonUtility.FromJson silently fills an absent field with 0 on load rather than
+            // erroring — exitAcceptBonus and fastForwardFactor both did exactly this in the
+            // committed default.json before this test existed, and it was invisible: the
+            // round-trip test above only exercises Save/Load through a temp directory, never
+            // the file that actually ships.
+            //
+            // A value comparison against TuningProfile.Default cannot catch this: a missing
+            // field reads back as 0 and JsonUtility.ToJson then writes that 0 back out under
+            // its key, so both sides would carry the same keys and a ToJson-vs-ToJson
+            // comparison passes vacuously. And a value comparison is the wrong tool anyway —
+            // default.json is *supposed* to differ from code (jumpCutMultiplier is 0.3878 in
+            // the file against 0.39 in code), so asserting equality would fail the moment
+            // anyone legitimately tuned a value.
+            //
+            // So this compares only the KEY SET: every field name the code knows about must
+            // appear somewhere in the file's raw text. Extra or stale keys are fine — an old
+            // field nobody has cleaned up yet is not a bug this test cares about.
+            string path = Path.Combine(Application.dataPath, "StreamingAssets", "levels", "_tuning", "default.json");
+            Assert.IsTrue(File.Exists(path), $"missing {path}");
+
+            HashSet<string> fileKeys = ExtractKeys(File.ReadAllText(path));
+            HashSet<string> defaultKeys = ExtractKeys(JsonUtility.ToJson(TuningProfile.Default));
+
+            List<string> missing = defaultKeys.Except(fileKeys).OrderBy(k => k).ToList();
+            Assert.IsEmpty(missing,
+                $"default.json is missing field(s), which JsonUtility will silently read back as 0: {string.Join(", ", missing)}");
+        }
+
+        static HashSet<string> ExtractKeys(string json)
+        {
+            var keys = new HashSet<string>();
+            foreach (Match match in Regex.Matches(json, "\"([A-Za-z_][A-Za-z0-9_]*)\"\\s*:"))
+                keys.Add(match.Groups[1].Value);
+            return keys;
         }
 
         static void AssertBits(float expected, float actual, string field)

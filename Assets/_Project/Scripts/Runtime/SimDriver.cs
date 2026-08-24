@@ -67,8 +67,7 @@ namespace KeepyUppy.Runtime
 
             Speed.Factor = FastForward ? World.Tuning.fastForwardFactor : 1;
 
-            int steps = Speed.StepsFor(_frame++);
-            for (int i = 0; i < steps; i++) World.Tick();
+            World.Tick(Speed.StepsFor(_frame++));
         }
     }
 }
