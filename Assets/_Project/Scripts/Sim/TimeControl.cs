@@ -30,16 +30,19 @@ namespace KeepyUppy.Sim
         public bool SlowMotion;
 
         /// <summary>
-        /// Steps to run on this render frame.
+        /// Steps to run on this call.
         ///
-        /// A pure function of the frame number: slow motion drops every other frame by
-        /// parity rather than by an accumulator, so there is no state to drift and none to
-        /// reset when the room restarts.
+        /// <paramref name="fixedStep"/> is the driver's own count of fixed steps taken so
+        /// far (SimDriver._fixedStep), not a render-frame number - FixedUpdate can run more
+        /// than once per render frame, so the two are not the same counter. A pure function
+        /// of it either way: slow motion drops every other step by parity rather than by an
+        /// accumulator, so there is no state to drift and none to reset when the room
+        /// restarts.
         /// </summary>
-        public int StepsFor(int renderFrame)
+        public int StepsFor(int fixedStep)
         {
             // An accessibility setting must not be overridden by a convenience one.
-            if (SlowMotion) return renderFrame % 2 == 0 ? 1 : 0;
+            if (SlowMotion) return fixedStep % 2 == 0 ? 1 : 0;
 
             return Mathf.Clamp(Factor, 1, MaxFactor);
         }

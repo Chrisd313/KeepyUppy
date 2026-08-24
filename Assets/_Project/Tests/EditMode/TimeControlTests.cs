@@ -4,10 +4,10 @@ using NUnit.Framework;
 namespace KeepyUppy.SimTests
 {
     /// <summary>
-    /// How many fixed steps a render frame gets.
+    /// How many fixed steps SimDriver's FixedUpdate runs in one call.
     ///
     /// GDD 6.1 forbids changing dt, so speed is expressed as the NUMBER of 60 Hz steps run
-    /// per frame. The simulation cannot tell the difference: the same steps happen in the
+    /// per call. The simulation cannot tell the difference: the same steps happen in the
     /// same order, and only the wall-clock spent waiting for them changes.
     /// </summary>
     public sealed class TimeControlTests
@@ -17,8 +17,8 @@ namespace KeepyUppy.SimTests
         {
             var time = new TimeControl();
 
-            for (int frame = 0; frame < 10; frame++)
-                Assert.AreEqual(1, time.StepsFor(frame), $"frame {frame}");
+            for (int fixedStep = 0; fixedStep < 10; fixedStep++)
+                Assert.AreEqual(1, time.StepsFor(fixedStep), $"fixed step {fixedStep}");
         }
 
         [Test]
@@ -26,8 +26,8 @@ namespace KeepyUppy.SimTests
         {
             var time = new TimeControl { Factor = 2 };
 
-            for (int frame = 0; frame < 10; frame++)
-                Assert.AreEqual(2, time.StepsFor(frame), $"frame {frame}");
+            for (int fixedStep = 0; fixedStep < 10; fixedStep++)
+                Assert.AreEqual(2, time.StepsFor(fixedStep), $"fixed step {fixedStep}");
         }
 
         [Test]
@@ -70,11 +70,12 @@ namespace KeepyUppy.SimTests
         [Test]
         public void FrameParityIsAllSlowMotionRemembers()
         {
-            // Deliberately a pure function of the frame number rather than an accumulator:
-            // no state to drift, and no state to reset when the room restarts.
+            // Deliberately a pure function of the fixed-step count (SimDriver's own tally of
+            // FixedUpdate calls, not a render-frame number - see StepsFor's remarks) rather
+            // than an accumulator: no state to drift, and no state to reset when the room
+            // restarts.
             var time = new TimeControl { SlowMotion = true };
 
-            Assert.AreEqual(time.StepsFor(100), time.StepsFor(100), "same frame, same answer");
             Assert.AreEqual(1, time.StepsFor(1000));
             Assert.AreEqual(0, time.StepsFor(1001));
         }
