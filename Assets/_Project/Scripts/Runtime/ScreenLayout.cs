@@ -23,9 +23,6 @@ namespace KeepyUppy.Runtime
     {
         [SerializeField] Transform[] anchors = System.Array.Empty<Transform>();
 
-        /// <summary>How many anchor slots this prefab declares, assigned or not.</summary>
-        public int AnchorCount => anchors?.Length ?? 0;
-
         /// <summary>
         /// The world position of anchor <paramref name="index"/>, or <paramref name="fallback"/>
         /// if that slot doesn't exist or was never assigned in the inspector. Never throws and

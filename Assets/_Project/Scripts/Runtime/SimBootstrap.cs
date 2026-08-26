@@ -9,12 +9,11 @@ using KeepyUppy.LevelEditing;
 namespace KeepyUppy.Runtime
 {
     /// <summary>
-    /// Builds a playable room entirely in code: press Play in any scene and watch the
-    /// balloon fall and bounce. Nothing is authored in a .unity file, so there is no scene
-    /// to keep in sync and no prefab to drift.
-    ///
-    /// Temporary. Replaced by the JSON level loader (level-editor-spec 3) once ILevelSource
-    /// exists.
+    /// Boots the game entirely in code: builds the sim camera and the menu shell, and loads
+    /// the level manifest, all with nothing authored in a .unity file - so there is no scene
+    /// to keep in sync and no prefab to drift. No level is loaded here; the game boots to the
+    /// title screen and a level exists only once <see cref="StartLevel"/> is called from the
+    /// level select.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class SimBootstrap : MonoBehaviour
@@ -41,10 +40,10 @@ namespace KeepyUppy.Runtime
         public static string StartingProfile = FileTuningSource.DefaultProfileName;
 
         /// <summary>
-        /// Level loaded at startup. The manifest is authoritative and overwrites this with its
-        /// first listed level whenever it lists anything (see PrepareLevelSource below) — so
-        /// changing this constant only affects a genuinely fresh project with no manifest yet.
-        /// To boot into a different room, reorder the manifest instead.
+        /// The id newly-seeded content is written under on a genuinely fresh project with no
+        /// manifest yet (see PrepareLevelSource/SeedLevel). Nothing boots a level from this any
+        /// more - the game boots to the title screen, and a level is only loaded once the
+        /// player picks one from the level select.
         /// </summary>
         public static string StartingLevel = "w1_01";
 
@@ -155,11 +154,6 @@ namespace KeepyUppy.Runtime
             // TryPrepareIndex reports a genuinely fresh project - see its own comment for why.
             bool freshProject = TryPrepareIndex(_levelSource, out LevelIndex index);
             if (freshProject) _levelSource.SaveIfAbsent(StartingLevel, SeedLevel());
-
-            // The starting level is the manifest's first, so adding a level before w1_01 in
-            // the editor changes what the game boots into - which is what a level list is for.
-            IReadOnlyList<string> listed = index.AllLevels();
-            if (listed.Count > 0) StartingLevel = listed[0];
 
             _index = index;
         }

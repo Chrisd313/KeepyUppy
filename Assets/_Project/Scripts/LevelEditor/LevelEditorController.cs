@@ -76,6 +76,26 @@ namespace KeepyUppy.LevelEditing
             GUIUtility.keyboardControl = 0;
         }
 
+        /// <summary>
+        /// The editor now dies with its session (LevelSession is destroyed on quit/restart),
+        /// so a destroy while still in Edit mode is a real path, not just a domain reload. If
+        /// this controller is destroyed without ever calling EnterPlay - the only other place
+        /// that un-suppresses gameplay - the static DevInputCapture.EditorModeActive flag
+        /// SetGameplaySuppressed(true) set on the way into Edit mode stays set forever,
+        /// silently suppressing every shell and gameplay key with no editor left to clear it.
+        /// Goes through Host, same as everywhere else this flag is touched, rather than
+        /// reaching for DevInputCapture directly - LevelEditor cannot reference Runtime (Runtime
+        /// already references LevelEditor; a reference back would be circular). Unconditional:
+        /// clearing a flag that is already false is harmless, and OnDisable runs on every
+        /// teardown path (Destroy included), edit or play. Host can be null in the split second
+        /// after Destroy(gameObject) if this fires post-teardown - tolerate that like every
+        /// other Host access in this class.
+        /// </summary>
+        void OnDisable()
+        {
+            Host?.SetGameplaySuppressed(false);
+        }
+
         public void Begin(LevelData level)
         {
             // Share the world's grid, so edits are visible the moment they are made rather
