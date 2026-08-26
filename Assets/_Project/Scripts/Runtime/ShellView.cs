@@ -109,6 +109,9 @@ namespace KeepyUppy.Runtime
                 case AppScreen.LevelSelect:
                     if (_input.Navigate != Vector2Int.zero) _levelSelect?.Move(_input.Navigate);
                     if (_input.Confirm) ConfirmLevelSelect();
+#if LEVEL_EDITOR
+                    if (_input.EditPressed) StartEditing();
+#endif
                     if (_input.Back) _stack.Back();
                     break;
 
@@ -215,6 +218,27 @@ namespace KeepyUppy.Runtime
             _stack.ResetWin();
             _stack.Go(AppScreen.Playing);
         }
+
+#if LEVEL_EDITOR
+        /// <summary>
+        /// Starts the highlighted level and immediately turns its session into an editing
+        /// session, the same "stay put on failure" rule as ConfirmLevelSelect: a null session
+        /// means the load failed and there is nothing to edit.
+        /// </summary>
+        void StartEditing()
+        {
+            if (_levelSelect == null || _levelSelect.IsEmpty || Bootstrap == null) return;
+
+            LevelSession session = Bootstrap.StartLevel(_levelSelect.CurrentLevel);
+            if (session == null) return;
+
+            session.BeginEditing((FileLevelSource)Bootstrap.Levels, Bootstrap.Camera);
+
+            // Same reset the ordinary start path needs — see StartLevel's comment.
+            _stack.ResetWin();
+            _stack.Go(AppScreen.Playing);
+        }
+#endif
 
         void RedrawIfNeeded()
         {

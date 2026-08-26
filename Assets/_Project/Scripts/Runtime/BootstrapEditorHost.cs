@@ -15,15 +15,12 @@ namespace KeepyUppy.Runtime
     /// </summary>
     sealed class BootstrapEditorHost : ILevelEditorHost
     {
-        readonly SimBootstrap _bootstrap;
         readonly SimDriver _driver;
         readonly Camera _camera;
         readonly FileLevelSource _levels;
 
-        public BootstrapEditorHost(SimBootstrap bootstrap, SimDriver driver,
-                                   Camera camera, FileLevelSource levels)
+        public BootstrapEditorHost(SimDriver driver, Camera camera, FileLevelSource levels)
         {
-            _bootstrap = bootstrap;
             _driver = driver;
             _camera = camera;
             _levels = levels;

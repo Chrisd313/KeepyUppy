@@ -1,6 +1,9 @@
 using KeepyUppy.Sim;
 using KeepyUppy.Sim.Level;
 using UnityEngine;
+#if LEVEL_EDITOR
+using KeepyUppy.LevelEditing;
+#endif
 
 namespace KeepyUppy.Runtime
 {
@@ -16,6 +19,12 @@ namespace KeepyUppy.Runtime
     {
         public SimDriver Driver { get; private set; }
         public string LevelId { get; private set; }
+
+        /// <summary>
+        /// The data this session was built from. The editor needs it to seed a
+        /// LevelEditorController — everything else here only reads the live SimWorld.
+        /// </summary>
+        public LevelData Level { get; private set; }
 
         /// <summary>
         /// Builds a level and everything it needs to run. The world must be fully configured
@@ -37,6 +46,7 @@ namespace KeepyUppy.Runtime
 
             var session = go.AddComponent<LevelSession>();
             session.LevelId = id;
+            session.Level = level;
 
             var driver = go.AddComponent<SimDriver>();
             session.Driver = driver;
@@ -67,6 +77,22 @@ namespace KeepyUppy.Runtime
 
         /// <summary>The room's own reset (GDD 8: restart under 200 ms), not a rebuild.</summary>
         public void Restart() => Driver.World.Restart();
+
+#if LEVEL_EDITOR
+        /// <summary>
+        /// Turns this session into an editing session: installs LevelEditorController and
+        /// hands it a host onto this session's own driver and world. Moved here from
+        /// SimBootstrap.Awake now that a session, not the boot object, is what the editor
+        /// needs — the editor is a mode of a level session, not a separate path.
+        /// </summary>
+        public void BeginEditing(FileLevelSource levels, Camera camera)
+        {
+            var editor = gameObject.AddComponent<LevelEditorController>();
+            editor.Host = new BootstrapEditorHost(Driver, camera, levels);
+            editor.LevelId = LevelId;
+            editor.Begin(Level);
+        }
+#endif
 
         /// <summary>
         /// Tile quads follow the grid rather than being built once, so painting in the editor

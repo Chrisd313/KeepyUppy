@@ -25,6 +25,13 @@ namespace KeepyUppy.InputLayer
         bool Confirm { get; }
         bool Back { get; }
 
+        /// <summary>
+        /// Opens the level editor for the highlighted level select entry. One-shot edge, same
+        /// shape as Confirm — LEVEL_EDITOR-gated at the call site, not here, so this interface
+        /// stays the same shape whether or not the editor is compiled in.
+        /// </summary>
+        bool EditPressed { get; }
+
         bool FastForwardHeld { get; }
 
         /// <summary>Latch edges once per render frame.</summary>
@@ -40,11 +47,13 @@ namespace KeepyUppy.InputLayer
         Vector2Int _navigate;
         bool _confirm;
         bool _back;
+        bool _edit;
         bool _fastForward;
 
         public Vector2Int Navigate { get; private set; }
         public bool Confirm { get; private set; }
         public bool Back { get; private set; }
+        public bool EditPressed { get; private set; }
         public bool FastForwardHeld { get; private set; }
 
         public void Press(Vector2Int navigate, bool confirm, bool back, bool fastForward = false)
@@ -55,6 +64,12 @@ namespace KeepyUppy.InputLayer
             _fastForward = fastForward;
         }
 
+        /// <summary>Separate from Press because EditPressed is exercised by its own test only.</summary>
+        public void PressEdit()
+        {
+            _edit = true;
+        }
+
         public void Latch() { }
 
         public void Sample()
@@ -62,6 +77,7 @@ namespace KeepyUppy.InputLayer
             Navigate = _navigate;
             Confirm = _confirm;
             Back = _back;
+            EditPressed = _edit;
 
             // Held, not consumed: it stays true until the caller says otherwise.
             FastForwardHeld = _fastForward;
@@ -70,6 +86,7 @@ namespace KeepyUppy.InputLayer
             _navigate = Vector2Int.zero;
             _confirm = false;
             _back = false;
+            _edit = false;
         }
     }
 }

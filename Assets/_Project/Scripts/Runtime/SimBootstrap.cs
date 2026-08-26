@@ -60,6 +60,13 @@ namespace KeepyUppy.Runtime
         public ILevelSource Levels => _levelSource;
         public LevelIndex Index => _index;
 
+        /// <summary>
+        /// The single sim camera built at boot. Exposed only for BeginEditing (Task 8) — the
+        /// editor reads screen-to-world through it, the same camera every view already draws
+        /// through.
+        /// </summary>
+        public Camera Camera => _camera;
+
         void Awake()
         {
             LoadTuning();
@@ -68,9 +75,8 @@ namespace KeepyUppy.Runtime
             BuildCamera();
             BuildShellView();
 
-            // TODO(Task 8): the level editor needs a running driver, so it starts a session
-            // (StartLevel(StartingLevel)) and installs itself into it, rather than running
-            // here at boot as it did before the menu shell existed.
+            // The editor is a mode of a level session now, not a separate boot path — see
+            // LevelSession.BeginEditing. Nothing to install here until a level is chosen.
         }
 
         /// <summary>

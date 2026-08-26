@@ -42,6 +42,19 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void EditPressedIsAnEdge()
+        {
+            var input = new ScriptedShellInput();
+
+            input.PressEdit();
+            input.Sample();
+            Assert.IsTrue(input.EditPressed);
+
+            input.Sample();
+            Assert.IsFalse(input.EditPressed, "an edit press lasts exactly one sample");
+        }
+
+        [Test]
         public void FastForwardIsHeldNotAnEdge()
         {
             // Held, not pressed: it is released the moment something needs reacting to, and
