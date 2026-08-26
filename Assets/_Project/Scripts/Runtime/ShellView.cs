@@ -244,7 +244,16 @@ namespace KeepyUppy.Runtime
             _drawnResultsCursor = _results.Cursor;
         }
 
-        /// <summary>One container per redraw, so a single Destroy tears every quad down.</summary>
+        /// <summary>
+        /// One container per redraw, so a single Destroy tears every quad down.
+        ///
+        /// If <c>Resources/Shell/&lt;screen&gt;</c> exists it is instantiated under the root
+        /// and its <see cref="ScreenLayout"/> (if any) drives anchor positions; the manifest
+        /// has no such prefabs today, so this always takes the null branch and every screen
+        /// renders at its hardcoded literals exactly as before. That is deliberate: prefabs
+        /// are authored by hand in the editor, never generated, so "no prefab" has to stay a
+        /// fully supported, unremarkable path rather than a special case.
+        /// </summary>
         GameObject BuildScreen(AppScreen screen)
         {
             // Playing draws nothing: the existing debug overlay stands in until phase C.
@@ -253,89 +262,129 @@ namespace KeepyUppy.Runtime
             var root = new GameObject($"ShellText_{screen}");
             root.transform.SetParent(transform, false);
 
+            // Resources.Load returns null with no error when the folder or asset doesn't
+            // exist - the expected result today, since no Resources/ folder exists yet.
+            GameObject prefab = Resources.Load<GameObject>($"Shell/{screen}");
+            ScreenLayout layout = null;
+            if (prefab != null)
+            {
+                GameObject instance = Object.Instantiate(prefab, root.transform, false);
+                layout = instance.GetComponent<ScreenLayout>();
+            }
+
             switch (screen)
             {
-                case AppScreen.Title: DrawTitle(root.transform); break;
-                case AppScreen.LevelSelect: DrawLevelSelect(root.transform); break;
-                case AppScreen.Paused: DrawPaused(root.transform); break;
-                case AppScreen.Results: DrawResults(root.transform); break;
+                case AppScreen.Title: DrawTitle(root.transform, layout); break;
+                case AppScreen.LevelSelect: DrawLevelSelect(root.transform, layout); break;
+                case AppScreen.Paused: DrawPaused(root.transform, layout); break;
+                case AppScreen.Results: DrawResults(root.transform, layout); break;
             }
 
             return root;
         }
 
-        static void DrawTitle(Transform parent)
+        /// <summary>
+        /// Anchors (see ScreenLayout): 0 = title, 1 = "press space" prompt.
+        /// </summary>
+        static void DrawTitle(Transform parent, ScreenLayout layout)
         {
-            TextView.Draw(parent, "KEEPY UPPY", new Vector2(7f, 13f), SimPalette.Text, scale: 2);
-            TextView.Draw(parent, "PRESS SPACE", new Vector2(10f, 9f), SimPalette.TextDim);
+            Vector2 title = Anchor(layout, 0, new Vector2(7f, 13f));
+            Vector2 prompt = Anchor(layout, 1, new Vector2(10f, 9f));
+            TextView.Draw(parent, "KEEPY UPPY", title, SimPalette.Text, scale: 2);
+            TextView.Draw(parent, "PRESS SPACE", prompt, SimPalette.TextDim);
         }
 
-        void DrawLevelSelect(Transform parent)
+        /// <summary>
+        /// Anchors (see ScreenLayout): 0 = header - either the world name or, when there are
+        /// no levels at all, the "no levels" message (the two never draw together, so they
+        /// share a slot); 1 = the top of the level list, each further row stepping down from
+        /// it by the same 1.5-unit spacing as the code default; 2 = the "&lt; world &gt;" hint,
+        /// only drawn when more than one world exists.
+        /// </summary>
+        void DrawLevelSelect(Transform parent, ScreenLayout layout)
         {
             if (_levelSelect == null || _levelSelect.IsEmpty)
             {
-                TextView.Draw(parent, "NO LEVELS", new Vector2(10f, 10f), SimPalette.TextDim);
+                TextView.Draw(parent, "NO LEVELS", Anchor(layout, 0, new Vector2(10f, 10f)), SimPalette.TextDim);
                 return;
             }
 
             string worldName = (_levelSelect.CurrentWorld?.name ?? "").ToUpperInvariant();
-            TextView.Draw(parent, worldName, new Vector2(4f, 16f), SimPalette.Text, scale: 2);
+            TextView.Draw(parent, worldName, Anchor(layout, 0, new Vector2(4f, 16f)), SimPalette.Text, scale: 2);
 
             // No scrolling and no clamp: past nine entries this list runs off the bottom of
             // the 640x360 screen. Worlds are planned at ~10 levels (GDD), so this is a known
             // future defect, not an oversight - w1 only has two levels today, which is why it
             // hasn't been hit. Deliberately not fixed here; scrolling is deferred.
             IReadOnlyList<string> levels = _levelSelect.CurrentWorldLevels;
-            float y = 13f;
+            Vector2 listTop = Anchor(layout, 1, new Vector2(4f, 13f));
+            float y = listTop.y;
             for (int i = 0; i < levels.Count; i++)
             {
                 bool current = i == _levelSelect.LevelCursor;
                 Color colour = current ? SimPalette.Text : SimPalette.TextDim;
                 string line = (current ? "> " : "  ") + levels[i];
-                TextView.Draw(parent, line, new Vector2(4f, y), colour);
+                TextView.Draw(parent, line, new Vector2(listTop.x, y), colour);
                 y -= 1.5f;
             }
 
             // Only worth the hint when there is somewhere else to go.
             if (_levelSelect.WorldCount > 1)
-                TextView.Draw(parent, "< WORLD >", new Vector2(4f, 2f), SimPalette.TextDim);
+                TextView.Draw(parent, "< WORLD >", Anchor(layout, 2, new Vector2(4f, 2f)), SimPalette.TextDim);
         }
 
-        void DrawPaused(Transform parent)
+        /// <summary>Anchors (see ScreenLayout): 0 = "paused" header, 1 = top of the option list.</summary>
+        void DrawPaused(Transform parent, ScreenLayout layout)
         {
-            TextView.Draw(parent, "PAUSED", new Vector2(12f, 13f), SimPalette.Text, scale: 2);
-            DrawOptions(parent, _pause, 9f);
+            TextView.Draw(parent, "PAUSED", Anchor(layout, 0, new Vector2(12f, 13f)), SimPalette.Text, scale: 2);
+            DrawOptions(parent, _pause, Anchor(layout, 1, new Vector2(9f, 9f)));
         }
 
-        void DrawResults(Transform parent)
+        /// <summary>
+        /// Anchors (see ScreenLayout): 0 = "room cleared" header, 1 = the touch-count line,
+        /// 2 = top of the option list.
+        /// </summary>
+        void DrawResults(Transform parent, ScreenLayout layout)
         {
-            TextView.Draw(parent, "ROOM CLEARED", new Vector2(8f, 13f), SimPalette.Text, scale: 2);
+            TextView.Draw(parent, "ROOM CLEARED", Anchor(layout, 0, new Vector2(8f, 13f)), SimPalette.Text, scale: 2);
 
             // Results is only reached via the win edge, which only fires with a session
             // running (see Update) - but Session can still vanish between the edge and this
             // redraw, so read the touch count defensively rather than assuming it survives.
             int touches = Bootstrap?.Session?.Driver.World.WinningTouches ?? 0;
-            TextView.Draw(parent, $"{touches} TOUCHES", new Vector2(11f, 10f), SimPalette.TextDim);
+            TextView.Draw(parent, $"{touches} TOUCHES", Anchor(layout, 1, new Vector2(11f, 10f)), SimPalette.TextDim);
 
-            DrawOptions(parent, _results, 6.5f);
+            DrawOptions(parent, _results, Anchor(layout, 2, new Vector2(9f, 6.5f)));
         }
 
         /// <summary>
         /// Shared by Paused and Results: one line per option, cursor marked the same way
         /// LevelSelect marks its own ("> " prefix) so the two menus read as the same kind of
-        /// control.
+        /// control. <paramref name="top"/> is already-resolved (anchor-or-default happens in
+        /// the caller, since the anchor index differs per screen) so this stays screen-agnostic.
         /// </summary>
-        static void DrawOptions(Transform parent, OptionMenu menu, float topY)
+        static void DrawOptions(Transform parent, OptionMenu menu, Vector2 top)
         {
-            float y = topY;
+            float y = top.y;
             for (int i = 0; i < menu.Count; i++)
             {
                 bool current = i == menu.Cursor;
                 Color colour = current ? SimPalette.Text : SimPalette.TextDim;
                 string line = (current ? "> " : "  ") + OptionMenu.Label(menu.At(i));
-                TextView.Draw(parent, line, new Vector2(9f, y), colour);
+                TextView.Draw(parent, line, new Vector2(top.x, y), colour);
                 y -= 1.5f;
             }
+        }
+
+        /// <summary>
+        /// Null-safe wrapper around <see cref="ScreenLayout.AnchorOrDefault"/>: with no prefab
+        /// for this screen <paramref name="layout"/> is null (see BuildScreen), which must mean
+        /// "use the code position" the same as a prefab whose anchor slot was never assigned -
+        /// one fallback path for both, not a special case for "no prefab at all".
+        /// </summary>
+        static Vector2 Anchor(ScreenLayout layout, int index, Vector2 fallback)
+        {
+            return layout != null ? layout.AnchorOrDefault(index, fallback) : fallback;
         }
     }
 }

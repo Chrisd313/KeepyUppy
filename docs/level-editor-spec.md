@@ -404,3 +404,50 @@ Each phase should be independently useful. Don't start phase N+1 before N is bei
 | **6 — Feedback** | Validation lint, metrics capture, death heatmap | 0.5 day |
 
 Phases 1 and 2 alone already pay for the whole tool.
+
+---
+
+## 11. Menu shell prefabs — 2026-08-26, as built
+
+The menu shell (title, level select, pause, results) drew at float literals hardcoded in
+`ShellView.cs` — moving a heading meant editing a number and pressing Play. `ScreenLayout`
+(`Assets/_Project/Scripts/Runtime/ScreenLayout.cs`) lets you position that text, and add
+artwork behind it, visually in the editor instead.
+
+**This is optional per screen.** `ShellView` still has every position hardcoded as a fallback.
+If no prefab exists for a screen, or a prefab exists but doesn't fill in every anchor, the
+missing positions draw exactly where they do today. Nothing needs a prefab to keep working.
+
+### To author one
+
+1. In the Hierarchy, create an empty GameObject and add a `ScreenLayout` component to it
+   (`Component → Scripts → KeepyUppy.Runtime → Screen Layout`, or drag the script on).
+2. For each anchor the screen uses, add a child empty GameObject, position it where that
+   piece of text should sit, and drag it into the next open slot of `ScreenLayout`'s
+   `Anchors` array, **in order** — anchor 0 must be the first thing on the list below, not
+   whichever child you happen to like the name of. The list is positional, not matched by
+   name.
+3. Add `SpriteRenderer` children for any background art. They aren't anchors and don't go in
+   the array; they just need to exist under the same prefab so they draw with it.
+4. Drag the root into `Assets/_Project/Resources/Shell/` and name it exactly the matching
+   `AppScreen` value — `Title.prefab`, `LevelSelect.prefab`, `Paused.prefab`, or
+   `Results.prefab`. The `Resources/Shell/` path and the exact-name match are both load-bearing:
+   `ShellView` looks up `Resources.Load<GameObject>("Shell/" + screen)`.
+
+**Leaving an anchor slot unassigned (or leaving the whole array short) is safe and supported**
+— that slot falls back to the code position, the same as if no prefab existed at all. It never
+produces text at the origin or an invisible screen. There is no separate "half-finished" state
+to worry about; every prefab is valid the moment it exists, however many anchors it fills in.
+
+### Anchor order per screen
+
+| Screen | 0 | 1 | 2 |
+|---|---|---|---|
+| `Title` | "KEEPY UPPY" heading | "PRESS SPACE" prompt | — |
+| `LevelSelect` | world name header (or "NO LEVELS" when the manifest is empty — the two never draw together, so they share the slot) | top of the level list (each row below it steps down by the same spacing as the code default) | "< WORLD >" hint (only drawn with more than one world) |
+| `Paused` | "PAUSED" heading | top of the option list | — |
+| `Results` | "ROOM CLEARED" heading | touch-count line | top of the option list |
+
+This table is the same one in the `///` comment above each `Draw*` method in `ShellView.cs` —
+if the two ever disagree, the code comment is the one actually read at runtime and this table
+is stale.
