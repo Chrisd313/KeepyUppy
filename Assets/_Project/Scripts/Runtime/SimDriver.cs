@@ -44,17 +44,49 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
-        /// Holds the sim still without unwinding any of its state. Used by the level editor
-        /// while authoring; the step counter simply stops advancing, so determinism is
-        /// unaffected — a paused run resumes exactly where it was.
+        /// Set by the shell (<see cref="Runtime.ShellView"/>) for menu-driven pauses - the
+        /// Paused and Results overlays. Independent of <see cref="EditorPaused"/> so the two
+        /// owners cannot stomp each other; see <see cref="Paused"/>.
         /// </summary>
-        public bool Paused { get; set; }
+        public bool ShellPaused { get; set; }
+
+        /// <summary>
+        /// Set by the level editor while authoring (<see cref="BootstrapEditorHost.SetSimPaused"/>) -
+        /// otherwise the balloon falls, dies and restarts on a loop behind the tiles being
+        /// placed. Independent of <see cref="ShellPaused"/>; see <see cref="Paused"/>.
+        /// </summary>
+        public bool EditorPaused { get; set; }
+
+        /// <summary>
+        /// Holds the sim still without unwinding any of its state, whenever either owner above
+        /// asks for it. The step counter simply stops advancing, so determinism is unaffected —
+        /// a paused run resumes exactly where it was. This is the one place that answers
+        /// "is the sim frozen" - do not add another.
+        /// </summary>
+        public bool Paused => ShellPaused || EditorPaused;
+
+        /// <summary>
+        /// How many fixed steps each render frame gets. Lives here and not in SimWorld
+        /// because the simulation must not be able to observe it (GDD 6.1).
+        /// </summary>
+        public TimeControl Speed { get; } = new TimeControl();
+
+        /// <summary>Set by the shell while the fast-forward control is held.</summary>
+        public bool FastForward { get; set; }
+
+        // Counts calls to FixedUpdate, not render frames: Unity can call FixedUpdate more
+        // than once per render frame when the frame rate dips (see KeyboardShellInput.Latch's
+        // comment on the same fact), so this is a fixed-step counter passed to
+        // TimeControl.StepsFor - never assume it advances once per render frame.
+        int _fixedStep;
 
         void FixedUpdate()
         {
             if (Paused) return;
 
-            World.Tick();
+            Speed.Factor = FastForward ? World.Tuning.fastForwardFactor : 1;
+
+            World.Tick(Speed.StepsFor(_fixedStep++));
         }
     }
 }

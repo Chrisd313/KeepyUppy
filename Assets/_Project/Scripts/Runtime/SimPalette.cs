@@ -26,5 +26,9 @@ namespace KeepyUppy.Runtime
 
         /// <summary>Not reserved. Deliberately quieter than the balloon.</summary>
         public static readonly Color Player     = new Color32(0x7F, 0x8C, 0xA8, 0xFF);
+
+        /// <summary>UI text. Not a reserved colour — deliberately not the balloon's.</summary>
+        public static readonly Color Text    = new Color32(0xF2, 0xF2, 0xF2, 0xFF);
+        public static readonly Color TextDim = new Color32(0x7F, 0x8C, 0xA8, 0xFF);
     }
 }

@@ -131,6 +131,18 @@ Gameplay reserves `Space` `W` `A` `D` `J` `R` `Esc` and the arrow keys. Editor b
 
 The primary shipping risk (GDD §17.2). IL2CPP with aggressive stripping, Brotli compression, no unused packages, one texture atlas per world. **Check the build size at the end of P0**, not later.
 
+### The menu shell
+
+Title, level select, pause and results draw with the game's own quads — there is no UI package. uGUI was already dropped alongside URP during the WebGL cut (§22, 2026-08-22), and these screens are eight items and a grid, not a form worth pulling a UI framework back in for. `BitmapFont` (`Assets/_Project/Scripts/Runtime/BitmapFont.cs`) is a 5×7 glyph table authored in code; `TextView` (`TextView.cs`) turns a string into one quad per lit pixel through `QuadView`, the same primitive every other piece of placeholder geometry uses.
+
+**Every screen's rules live in a tested plain C# class; the view only draws.** `ScreenStack` and `LevelSelectModel`, both in `Assets/_Project/Scripts/Shell/` (its own assembly, `KeepyUppy.Shell` — an asmdef only covers its own folder tree, and a folder without one falls into `Assembly-CSharp`), decide which screen is current, what Back means, and where the level-select cursor can move. `ShellView.cs` is a MonoBehaviour with no automated tests, by design — it samples input, calls into the tested classes, and redraws text when their state changes. This is the same boundary the level editor already sits on.
+
+That boundary earned itself once already. The one piece of real decision logic that leaked into `ShellView` was the one that shipped broken: win detection was level-triggered (`IsWon && Current == Playing`) rather than edge-triggered. `SimWorld.IsWon` only clears via `Restart()`, and `Restart()` only fires after the win-hold's fixed steps run — steps a paused Results screen prevents from ever running. So pressing Back from Results returned to Playing with `IsWon` still true, the level-triggered check fired again immediately, and the sim re-paused before a single step could land — Back bounced straight back into Results, forever. The fix was moving the edge into `ScreenStack.ObserveWin(bool)`, which tracks the previous value and only transitions on the false-to-true edge; that is now a unit test (`AppScreenTests`), not a bug someone finds by hand. Rules belong in the tested classes for exactly this reason.
+
+`IShellInput` (`Assets/_Project/Scripts/Input/IShellInput.cs`) is deliberately separate from `IInputSource`, not just for tidiness. `IInputSource.Sample(int step)` is called *inside* `SimWorld.Tick()`, so an intent bound there can't be read while the world isn't ticking — a pause bound that way could be entered and never left (§22, 2026-08-24 reverses the 2026-08-22 prediction that `PausePressed` would join `IInputSource`). Everything shell-level — navigation, confirm, back, fast-forward — is sampled once per render frame instead, outside the sim's tick. `KeyboardShellInput` implements it but has no automated tests: the test assembly cannot reference `KeepyUppy.Input.Devices`, so only the tested `ScriptedShellInput` stands in for it in tests (`ShellInputTests`).
+
+Fast-forward is *more fixed steps per render frame*, never a longer `dt` and never `Time.timeScale`. `TimeControl` (`Assets/_Project/Scripts/Sim/TimeControl.cs`) exposes `StepsFor(renderFrame)`; the simulation has no way to observe it, so a fast-forwarded run is bit-identical to a normal one and the determinism test cannot tell them apart. Slow motion is the same mechanism inverted — GDD §16's accessibility assist, dropping every other frame by frame parity rather than by an accumulator. Held on `F`, not Shift, which is already the context verb in `KeyboardInput`.
+
 ---
 
 ## Verifying changes

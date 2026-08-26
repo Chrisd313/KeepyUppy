@@ -56,7 +56,7 @@ namespace KeepyUppy.Runtime
         public void SetGameplaySuppressed(bool suppressed)
             => DevInputCapture.EditorModeActive = suppressed;
 
-        public void SetSimPaused(bool paused) => _driver.Paused = paused;
+        public void SetSimPaused(bool paused) => _driver.EditorPaused = paused;
     }
 }
 #endif

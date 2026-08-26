@@ -159,6 +159,9 @@ Three implementations — `KeyboardInput`, `GamepadInput`, `TouchInput` — feed
 | Aim hint | held movement / `↑` / `↓` | Right stick |
 | Restart | `R` | Y (North) |
 | Pause | `Esc` | Start |
+| Fast-forward | `F` (held) | — |
+
+`F` (held) and `Esc` are shell concerns read through `IShellInput`, not `IInputSource` — see the 2026-08-24 decision log entry on why `PausePressed` never joined the intent interface. Fast-forward and pause are therefore sampled per render frame rather than per fixed step.
 
 All bindings remappable (§16). Both keyboard sets are live simultaneously — arrows for right-handers, WASD for left-hand-on-keyboard players. Web players in particular arrive with no patience for a controls screen.
 
@@ -272,6 +275,7 @@ Starting values. Every one of these is a slider in the tuning panel (§18).
 | `player_bump_radius_bonus` | +0.15 m | §8 — player's bump volume, larger than the balloon's visual |
 | `hazard_pop_radius_shrink` | −0.15 m | §8 — every hazard's pop volume, smaller than its visual |
 | `exit_accept_bonus` | +0.15 m | §8 — the exit's accept volume, larger than its visual. The generous mirror of the row above; tuned separately because generosity at the goal and cruelty at the hazards are different feelings. Added 2026-08-24. |
+| `fast_forward_factor` | 2 | Steps per render frame while fast-forward is held. Feel value: too high and hazards stop being reactable. Added 2026-08-24. |
 
 Rows below `max_speed` added 2026-08-22: numbers §5.4, §5.5 and §8 describe in words but never quantified.
 
@@ -625,7 +629,7 @@ Placeholder direction only; not blocking.
 
 ## 15. Metagame & progression — WORKING
 
-- Level-select grid per world
+- Level-select grid per world — **built in phase B**, but shows only world and level names right now. No medals, times or death counts yet: those all read from save data, which is phase C. The grid and its cursor (`LevelSelectModel`) are ready for that data; nothing about the layout needs to change to add it.
 - Per-level death counter, displayed and never hidden
 - **Touch-count medal** — par per level, set from playtest metrics (§18), never from guesswork
 - Completion time tracked, shown, no leaderboard at launch
@@ -636,7 +640,7 @@ Placeholder direction only; not blocking.
 
 ## 16. Accessibility — WORKING
 
-- Slow-motion assist toggle (0.5×)
+- Slow-motion assist toggle (0.5×) — the same mechanism as hold-to-fast-forward, inverted: both are `TimeControl` (§6.1) choosing how many 60 Hz steps run per render frame, never a change to `dt`. `TimeControl.SlowMotion` drops every other frame by frame parity.
 - Optional balloon trajectory aid — **off by default**; deliberately absent from the base game, available as an accessibility option
 - Colourblind-safe hazard colour, verified against the reserved-colour rule
 - Fully remappable input; no timed input sequences anywhere
@@ -812,3 +816,5 @@ Independent of premise, and bigger than it looks. A face makes every pop hurt, m
 | 2026-08-24 | **Entity motion is derived from the step counter, never accumulated** | `position = f(step)` makes GDD 6.1 replay-equality structural rather than a thing to be careful about, costs nothing at restart, and is what later makes rewind and ghost trails (spec phase 5) possible at all. The constraint it imposes — reactive hazards like the cat need explicit state and explicit test coverage — is the price, and it is worth paying. |
 | 2026-08-24 | Moving hazards are lethal but passable; nothing pushes a body yet | Crushers and moving platforms need moving-solid collision, which raises a design question (a platform pushing the player into a spike) rather than only an implementation one. Deferred to the session that also does triggers and links, since GDD 9.3 needs both. |
 | 2026-08-22 | Hazard tiles block whatever they do *not* kill, and are transparent to whatever they do | A tile cannot both stop a body and pop it: collision holds the body outside, so the §8-mandated *smaller-than-visual* kill volume would never be reached. The balloon flies into a spike and pops; the player lands on the same spike and is killed by a volume that bleeds slightly through its surface. |
+| 2026-08-24 | **Reverses the 2026-08-22 prediction: `PausePressed` does NOT join `IInputSource`** | `IInputSource.Sample(int step)` is called inside `SimWorld.Tick()`, so an intent committed there cannot be read while the world is not ticking — a pause bound that way can be entered and never left. Pause and fast-forward are shell concerns that no simulation code reads, so both live on `IShellInput`, sampled per render frame. Adding a member to a LOCKED interface for something the simulation never consumes is the widening §5.5 exists to prevent. `IInputSource` is therefore unchanged by the menu shell. |
+| 2026-08-24 | **Hold-to-fast-forward, and the §16 slow-motion assist, are the same mechanism** | Speed is expressed as the *number* of 60 Hz steps run per render frame, never a longer `dt` and never `Time.timeScale`, so a fast-forwarded run is bit-identical and §6.1 is untouched. The in-game clock is unaffected too — every hazard period and cooldown scales together, so §4.3's pressure is intact and only the human's waiting compresses. The cost is the player's own reaction time, which is why it is held rather than toggled. |

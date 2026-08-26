@@ -100,6 +100,13 @@ namespace KeepyUppy.Sim
         /// </summary>
         public float exitAcceptBonus;
 
+        /// <summary>
+        /// Steps per render frame while fast-forward is held. A slider because the right
+        /// value is a feel question: too high and hazards stop being reactable while it is
+        /// down. Never a change to dt — see TimeControl.
+        /// </summary>
+        public int fastForwardFactor;
+
         public static BalloonTuning Default => new BalloonTuning
         {
             gravity = 1.0f,
@@ -134,6 +141,7 @@ namespace KeepyUppy.Sim
             flutterFalloffSpeed = 3.0f,
 
             exitAcceptBonus = 0.15f,
+            fastForwardFactor = 2,
         };
     }
 }

@@ -1,3 +1,4 @@
+using KeepyUppy.InputLayer;
 using KeepyUppy.Sim.Entities;
 using UnityEngine;
 
@@ -28,6 +29,17 @@ namespace KeepyUppy.Sim.Level
 
             world.Balloon.Radius = InflationBands.RadiusOf(ParseBand(level.spawn?.balloon_inflation));
             world.Exit = ToGate(level.exit);
+        }
+
+        /// <summary>
+        /// Applies the level and starts the run in one call: the sequence both SimBootstrap's
+        /// boot and the shell's "confirm a level" path need, so it lives here once instead of
+        /// being retyped at each call site.
+        /// </summary>
+        public static void ApplyAndConfigure(LevelData level, SimWorld world, IInputSource input, int seed)
+        {
+            Apply(level, world, out Vector2 balloonSpawn, out Vector2 playerSpawn);
+            world.Configure(balloonSpawn, Vector2.zero, playerSpawn, input, seed);
         }
 
         /// <summary>
