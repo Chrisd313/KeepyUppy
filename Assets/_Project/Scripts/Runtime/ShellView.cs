@@ -12,15 +12,16 @@ namespace KeepyUppy.Runtime
     /// <see cref="ScreenStack"/> and <see cref="LevelSelectModel"/>, both tested; this class
     /// only samples input, calls into them, and redraws text when their state changes.
     ///
-    /// <see cref="Driver"/> and <see cref="LevelSource"/> are assigned by
-    /// <see cref="SimBootstrap"/> right after this component is added — after AddComponent
-    /// runs Awake, so nothing here may depend on them until Update.
+    /// <see cref="Bootstrap"/> is assigned by <see cref="SimBootstrap"/> right after this
+    /// component is added — after AddComponent runs Awake, so nothing here may depend on it
+    /// until Update. There is no level session on the menus, so every read through
+    /// <c>Bootstrap.Session</c> must tolerate null: that is the normal state here, not an
+    /// error case.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class ShellView : MonoBehaviour
     {
-        public SimDriver Driver;
-        public ILevelSource LevelSource;
+        public SimBootstrap Bootstrap;
 
         readonly ScreenStack _stack = new ScreenStack();
         readonly KeyboardShellInput _input = new KeyboardShellInput();
@@ -37,7 +38,6 @@ namespace KeepyUppy.Runtime
         void Update()
         {
             EnsureInitialized();
-            if (Driver == null) return;
 
             // Same suppression rule as every other keyboard consumer (DevInputCapture):
             // a dev tool with focus must not also drive the menu.
@@ -45,28 +45,41 @@ namespace KeepyUppy.Runtime
             _input.Latch();
             _input.Sample();
 
-            // Edge detection lives in ScreenStack, not here — see ObserveWin's comment for
-            // why a level-triggered check in this file is the bug this method fixes.
-            _stack.ObserveWin(Driver.World.IsWon);
+            // No session exists on the menus (SimBootstrap builds one only on StartLevel),
+            // so every driver-dependent read or write here is skipped rather than defaulted -
+            // there is nothing to observe a win on, fast-forward or pause.
+            SimDriver driver = Bootstrap != null ? Bootstrap.Session?.Driver : null;
+
+            if (driver != null)
+            {
+                // Edge detection lives in ScreenStack, not here — see ObserveWin's comment
+                // for why a level-triggered check in this file is the bug this method fixes.
+                _stack.ObserveWin(driver.World.IsWon);
+            }
+
             HandleInput();
 
-            Driver.FastForward = _input.FastForwardHeld;
-            // Own only the shell's pause reason - the editor owns EditorPaused separately
-            // (BootstrapEditorHost.SetSimPaused), so neither can stomp the other's freeze.
-            Driver.ShellPaused = _stack.SimPaused;
+            if (driver != null)
+            {
+                driver.FastForward = _input.FastForwardHeld;
+                // Own only the shell's pause reason - the editor owns EditorPaused
+                // separately (BootstrapEditorHost.SetSimPaused), so neither can stomp the
+                // other's freeze.
+                driver.ShellPaused = _stack.SimPaused;
+            }
 
             RedrawIfNeeded();
         }
 
         /// <summary>
-        /// The manifest only needs loading once. Deferred out of Awake because Driver and
-        /// LevelSource are not set until after AddComponent returns (see the class comment).
+        /// The manifest only needs loading once. Deferred out of Awake because Bootstrap is
+        /// not set until after AddComponent returns (see the class comment).
         /// </summary>
         void EnsureInitialized()
         {
-            if (_initialized || LevelSource == null) return;
+            if (_initialized || Bootstrap == null || Bootstrap.Levels == null) return;
 
-            LevelIndex index = LevelSource.TryLoadIndex(out LevelIndex loaded) ? loaded : new LevelIndex();
+            LevelIndex index = Bootstrap.Levels.TryLoadIndex(out LevelIndex loaded) ? loaded : new LevelIndex();
             _levelSelect = new LevelSelectModel(index);
             _initialized = true;
         }
@@ -107,19 +120,18 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
-        /// Loads the selected level through the same path the game always loads levels
-        /// through (LevelLoader over ILevelSource — CLAUDE.md's shared-format rule) and hands
-        /// the room straight to the driver's own input, exactly as SimBootstrap does at boot.
+        /// Builds the selected level's session through the bootstrap — the same construction
+        /// path SimBootstrap.StartLevel uses everywhere, including its own former boot path.
+        /// Only goes to Playing if a session actually came back; a failed load leaves the
+        /// shell on LevelSelect rather than moving to a screen with nothing running behind it.
         /// </summary>
         void ConfirmLevelSelect()
         {
-            if (_levelSelect == null || _levelSelect.IsEmpty || LevelSource == null) return;
+            if (_levelSelect == null || _levelSelect.IsEmpty || Bootstrap == null) return;
 
             string id = _levelSelect.CurrentLevel;
             if (id == null) return;
-            if (!LevelSource.TryLoad(id, out LevelData level)) return;
-
-            LevelLoader.ApplyAndConfigure(level, Driver.World, Driver.Keyboard, SimBootstrap.Seed);
+            if (Bootstrap.StartLevel(id) == null) return;
 
             // A win carried over from whatever was playing before must not skip Results on
             // this level's very first observed step - see ScreenStack.ResetWin.
@@ -214,7 +226,12 @@ namespace KeepyUppy.Runtime
         void DrawResults(Transform parent)
         {
             TextView.Draw(parent, "ROOM CLEARED", new Vector2(8f, 11f), SimPalette.Text, scale: 2);
-            TextView.Draw(parent, $"{Driver.World.WinningTouches} TOUCHES", new Vector2(11f, 8f), SimPalette.TextDim);
+
+            // Results is only reached via the win edge, which only fires with a session
+            // running (see Update) - but Session can still vanish between the edge and this
+            // redraw, so read the touch count defensively rather than assuming it survives.
+            int touches = Bootstrap?.Session?.Driver.World.WinningTouches ?? 0;
+            TextView.Draw(parent, $"{touches} TOUCHES", new Vector2(11f, 8f), SimPalette.TextDim);
         }
     }
 }

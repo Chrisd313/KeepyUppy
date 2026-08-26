@@ -42,36 +42,68 @@ namespace KeepyUppy.Runtime
 
         /// <summary>
         /// Level loaded at startup. The manifest is authoritative and overwrites this with its
-        /// first listed level whenever it lists anything (see LoadLevel below) — so changing
-        /// this constant only affects a genuinely fresh project with no manifest yet. To boot
-        /// into a different room, reorder the manifest instead.
+        /// first listed level whenever it lists anything (see PrepareLevelSource below) — so
+        /// changing this constant only affects a genuinely fresh project with no manifest yet.
+        /// To boot into a different room, reorder the manifest instead.
         /// </summary>
         public static string StartingLevel = "w1_01";
 
         FileTuningSource _tuningSource;
         TuningProfile _tuningProfile;
         FileLevelSource _levelSource;
-        LevelData _level;
+        LevelIndex _index;
         Camera _camera;
-        LevelSession _session;
+
+        /// <summary>The level currently being played or edited, or null on the menus.</summary>
+        public LevelSession Session { get; private set; }
+
+        public ILevelSource Levels => _levelSource;
+        public LevelIndex Index => _index;
 
         void Awake()
         {
             LoadTuning();
-            LoadLevel();
+            PrepareLevelSource();
 
             BuildCamera();
-
-            _session = LevelSession.Create(transform, _level, StartingLevel, _tuningProfile, _tuningSource, Seed);
-
             BuildShellView();
 
-#if LEVEL_EDITOR
-            var editor = gameObject.AddComponent<LevelEditorController>();
-            editor.Host = new BootstrapEditorHost(this, _session.Driver, _camera, _levelSource);
-            editor.LevelId = StartingLevel;
-            editor.Begin(_level);
-#endif
+            // TODO(Task 8): the level editor needs a running driver, so it starts a session
+            // (StartLevel(StartingLevel)) and installs itself into it, rather than running
+            // here at boot as it did before the menu shell existed.
+        }
+
+        /// <summary>
+        /// Builds a level and everything it needs. Returns null if the level cannot be read,
+        /// leaving the caller on the menu rather than in a half-built room.
+        /// </summary>
+        public LevelSession StartLevel(string id)
+        {
+            EndLevel();
+
+            if (string.IsNullOrEmpty(id))
+                return null;
+
+            if (!_levelSource.TryLoad(id, out LevelData level))
+            {
+                Debug.LogWarning($"[level] '{id}' could not be loaded");
+                return null;
+            }
+
+            Session = LevelSession.Create(transform, level, id, _tuningProfile, _tuningSource, Seed);
+            return Session;
+        }
+
+        /// <summary>
+        /// Destroys the level and everything it built. One Destroy, because the session is a
+        /// single root — nothing here has to remember which views exist.
+        /// </summary>
+        public void EndLevel()
+        {
+            if (Session == null) return;
+
+            Destroy(Session.gameObject);
+            Session = null;
         }
 
         /// <summary>
@@ -97,11 +129,11 @@ namespace KeepyUppy.Runtime
 
         /// <summary>
         /// Levels are JSON (level-editor-spec 3), and the shipping game and the editor read
-        /// the same file. If the level is missing, the room built in code below seeds it once
-        /// — so the file is correct by construction rather than hand-typed, and after that the
-        /// JSON is the only source of truth.
+        /// the same file. This only prepares the source and the manifest — no level is loaded
+        /// here, since there is no session to load one into until <see cref="StartLevel"/> is
+        /// called.
         /// </summary>
-        void LoadLevel()
+        void PrepareLevelSource()
         {
             _levelSource = new FileLevelSource();
 
@@ -115,16 +147,7 @@ namespace KeepyUppy.Runtime
             IReadOnlyList<string> listed = index.AllLevels();
             if (listed.Count > 0) StartingLevel = listed[0];
 
-            if (!_levelSource.TryLoad(StartingLevel, out LevelData level))
-            {
-                Debug.LogWarning($"[level] '{StartingLevel}' not found; falling back to the seed room");
-                level = SeedLevel();
-            }
-
-            List<string> warnings = LevelValidator.Validate(level);
-            foreach (string warning in warnings) Debug.LogWarning($"[level] {StartingLevel}: {warning}");
-
-            _level = level;
+            _index = index;
         }
 
         /// <summary>
@@ -135,7 +158,7 @@ namespace KeepyUppy.Runtime
         ///
         /// Public and static so this decision - the part of boot most likely to regress
         /// silently - is reachable from an EditMode test without a scene. Do not fold it back
-        /// into <see cref="LoadLevel"/>; that is what made the bug it fixes untestable.
+        /// into <see cref="PrepareLevelSource"/>; that is what made the bug it fixes untestable.
         /// </summary>
         public static bool TryPrepareIndex(ILevelSource source, out LevelIndex index)
         {
@@ -243,8 +266,8 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
-        /// The shell starts on Title with the straight-to-level boot above already running
-        /// behind it (CLAUDE.md), so disabling this leaves the existing debug boot intact.
+        /// The shell is the only thing that exists at boot besides the camera — no
+        /// <see cref="SimDriver"/>, no world, no views, until a level is chosen.
         /// </summary>
         void BuildShellView()
         {
@@ -252,8 +275,7 @@ namespace KeepyUppy.Runtime
             go.transform.SetParent(transform, false);
 
             var shell = go.AddComponent<ShellView>();
-            shell.Driver = _session.Driver;
-            shell.LevelSource = _levelSource;
+            shell.Bootstrap = this;
         }
     }
 }
