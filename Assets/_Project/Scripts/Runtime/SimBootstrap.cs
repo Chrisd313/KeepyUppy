@@ -76,11 +76,15 @@ namespace KeepyUppy.Runtime
         /// <summary>
         /// Builds a level and everything it needs. Returns null if the level cannot be read,
         /// leaving the caller on the menu rather than in a half-built room.
+        ///
+        /// A null/empty id or a failed load must leave whatever is currently running alone —
+        /// "stay put" means the room the player is already in survives a bad request, not just
+        /// that no new one gets built. That is why the running session is torn down last, only
+        /// once the new level is known good: do not hoist EndLevel() back to the top of this
+        /// method, it would destroy a live room over a request that was always going nowhere.
         /// </summary>
         public LevelSession StartLevel(string id)
         {
-            EndLevel();
-
             if (string.IsNullOrEmpty(id))
                 return null;
 
@@ -90,6 +94,10 @@ namespace KeepyUppy.Runtime
                 return null;
             }
 
+            List<string> warnings = LevelValidator.Validate(level);
+            foreach (string warning in warnings) Debug.LogWarning($"[level] {id}: {warning}");
+
+            EndLevel();
             Session = LevelSession.Create(transform, level, id, _tuningProfile, _tuningSource, Seed);
             return Session;
         }
