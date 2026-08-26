@@ -48,43 +48,27 @@ namespace KeepyUppy.Runtime
         /// </summary>
         public static string StartingLevel = "w1_01";
 
-        SimDriver _driver;
         FileTuningSource _tuningSource;
+        TuningProfile _tuningProfile;
         FileLevelSource _levelSource;
         LevelData _level;
         Camera _camera;
+        LevelSession _session;
 
         void Awake()
         {
-            _driver = gameObject.AddComponent<SimDriver>();
-
-            SimWorld world = _driver.World;
-            LoadTuning(world);
+            LoadTuning();
             LoadLevel();
 
-            LevelLoader.ApplyAndConfigure(_level, world, _driver.Keyboard, Seed);
-
             BuildCamera();
-            BuildTileViews(world.Grid);
-            BuildEntityViews(world);
-            BuildExitView(world);
-            BuildBalloonView(world.Balloon);
-            BuildPlayerView(world.Player);
 
-            gameObject.AddComponent<SimDebugOverlay>().Driver = _driver;
+            _session = LevelSession.Create(transform, _level, StartingLevel, _tuningProfile, _tuningSource, Seed);
 
             BuildShellView();
 
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            TuningPanel panel = gameObject.AddComponent<TuningPanel>();
-            panel.Driver = _driver;
-            panel.Source = _tuningSource;
-            panel.ProfileName = StartingProfile;
-#endif
-
 #if LEVEL_EDITOR
             var editor = gameObject.AddComponent<LevelEditorController>();
-            editor.Host = new BootstrapEditorHost(this, _driver, _camera, _levelSource);
+            editor.Host = new BootstrapEditorHost(this, _session.Driver, _camera, _levelSource);
             editor.LevelId = StartingLevel;
             editor.Begin(_level);
 #endif
@@ -94,8 +78,10 @@ namespace KeepyUppy.Runtime
         /// Tuning comes from a named JSON profile (CLAUDE.md, level-editor-spec 6), not from
         /// literals in this file. The code defaults are only the seed used to write the first
         /// profile, so default.json is correct by construction rather than hand-maintained.
+        /// There is no world yet to apply it to — that happens per level in
+        /// <see cref="LevelSession.Create"/>.
         /// </summary>
-        void LoadTuning(SimWorld world)
+        void LoadTuning()
         {
             _tuningSource = new FileTuningSource();
             _tuningSource.SaveIfAbsent(FileTuningSource.DefaultProfileName, TuningProfile.Default);
@@ -103,11 +89,10 @@ namespace KeepyUppy.Runtime
             if (!_tuningSource.TryLoad(StartingProfile, out TuningProfile profile))
             {
                 Debug.LogWarning($"[tuning] profile '{StartingProfile}' not found; using code defaults");
-                return;
+                profile = TuningProfile.Default;
             }
 
-            world.Tuning = profile.balloon;
-            world.PlayerTuning = profile.player;
+            _tuningProfile = profile;
         }
 
         /// <summary>
@@ -258,50 +243,6 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
-        /// Tile quads follow the grid rather than being built once, so painting in the editor
-        /// shows up immediately.
-        /// </summary>
-        void BuildTileViews(TileGrid grid)
-        {
-            var root = new GameObject("Tiles");
-            root.transform.SetParent(transform, false);
-
-            root.AddComponent<TileViewSync>().Grid = grid;
-        }
-
-        /// <summary>Hazard quads follow the entities, which move every step (GDD 9).</summary>
-        void BuildEntityViews(SimWorld world)
-        {
-            var root = new GameObject("Entities");
-            root.transform.SetParent(transform, false);
-
-            root.AddComponent<EntityViewSync>().World = world;
-        }
-
-        /// <summary>The gate follows the world's exit, so editing it shows up at once.</summary>
-        void BuildExitView(SimWorld world)
-        {
-            var root = new GameObject("Exit");
-            root.transform.SetParent(transform, false);
-
-            root.AddComponent<ExitView>().World = world;
-        }
-
-        void BuildBalloonView(BalloonBody balloon)
-        {
-            float d = balloon.Radius * 2f;
-            GameObject go = QuadView.Create(
-                transform,
-                "Balloon",
-                SimPalette.Balloon,
-                balloon.Position,
-                new Vector2(d, d),
-                -1f
-            );
-            go.AddComponent<BalloonView>().Body = balloon;
-        }
-
-        /// <summary>
         /// The shell starts on Title with the straight-to-level boot above already running
         /// behind it (CLAUDE.md), so disabling this leaves the existing debug boot intact.
         /// </summary>
@@ -311,21 +252,8 @@ namespace KeepyUppy.Runtime
             go.transform.SetParent(transform, false);
 
             var shell = go.AddComponent<ShellView>();
-            shell.Driver = _driver;
+            shell.Driver = _session.Driver;
             shell.LevelSource = _levelSource;
-        }
-
-        void BuildPlayerView(PlayerBody player)
-        {
-            GameObject go = QuadView.Create(
-                transform,
-                "Player",
-                SimPalette.Player,
-                player.Position,
-                new Vector2(player.HalfWidth * 2f, player.HalfHeight * 2f),
-                -0.5f
-            );
-            go.AddComponent<PlayerView>().Body = player;
         }
     }
 }
