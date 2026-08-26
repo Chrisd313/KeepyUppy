@@ -89,6 +89,20 @@ namespace KeepyUppy.Shell
             _wasWon = false;
         }
 
+        /// <summary>
+        /// Leaves the current room for the level list, from pause or from results.
+        ///
+        /// Clears the win edge on the way out: the room being left is about to be torn down,
+        /// and a stale true would mean the next level's win is not a rising edge — so that
+        /// level would clear without ever showing Results. Same class of bug as the original
+        /// soft-lock ObserveWin exists to prevent, one level removed.
+        /// </summary>
+        public void QuitToLevels()
+        {
+            ResetWin();
+            Go(AppScreen.LevelSelect);
+        }
+
         /// <summary>Follows the fixed back-mapping in the class comment. Title has nowhere to go.</summary>
         public void Back()
         {
