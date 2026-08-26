@@ -110,6 +110,24 @@ namespace KeepyUppy.Sim.Level
         }
 
         /// <summary>
+        /// The level after this one in the same world, or null.
+        ///
+        /// Deliberately does not roll into the next world at a world's end: crossing worlds
+        /// is a progression question that belongs with save data (GDD 15), not with "what is
+        /// the next room". An unlisted id — a draft — has no answer either.
+        /// </summary>
+        public string NextAfter(string id)
+        {
+            LevelWorld world = WorldOf(id);
+            if (world == null) return null;
+
+            int slot = SlotOf(id);
+            int next = slot + 1;
+
+            return next >= 0 && next < world.levels.Length ? world.levels[next] : null;
+        }
+
+        /// <summary>
         /// Files present on disk that the manifest does not list - drafts. Order follows the
         /// input, so a sorted listing in gives a sorted listing out.
         /// </summary>
