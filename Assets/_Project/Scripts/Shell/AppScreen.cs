@@ -23,13 +23,17 @@ namespace KeepyUppy.Shell
     /// |-------------|-----------|--------------|
     /// | Title       | false     | Title (no-op)|
     /// | LevelSelect | false     | Title        |
-    /// | Playing     | false     | LevelSelect  |
+    /// | Playing     | false     | (no-op here - see Back()) |
     /// | Paused      | true      | Playing      |
     /// | Results     | true      | Playing      |
     ///
-    /// The room behind the current screen is alive for every screen - the title screen has
-    /// the demo room running behind it, so there is never a moment with no room at all.
-    /// SimPaused is true only for Paused and Results - both are overlays over a room that
+    /// A level session exists only while a level is actually being played. SimBootstrap
+    /// builds one in StartLevel and destroys it in EndLevel; Title and LevelSelect have no
+    /// session at all, not a paused or idling one. There is no room running behind the menus
+    /// any more - that was true before the menu-first boot, when the game always had a room
+    /// loaded and drew menus on top of it, but describing that here now would send the next
+    /// reader looking for a session that does not exist (CLAUDE.md's menu-shell section).
+    /// SimPaused is true only for Paused and Results - both are overlays over a session that
     /// must hold still rather than tear down, so that resuming (Back from Paused) or
     /// replaying (Back from Results) continues the same run instead of restarting it.
     /// </summary>
@@ -115,9 +119,13 @@ namespace KeepyUppy.Shell
                 case AppScreen.LevelSelect:
                     Go(AppScreen.Title);
                     break;
-                case AppScreen.Playing:
-                    Go(AppScreen.LevelSelect);
-                    break;
+                // Playing has no case here on purpose - it used to Go(LevelSelect), but that
+                // left the session running behind the level select with nothing to tear it
+                // down: only QuitToLevels() destroys a session, and this method has no way to
+                // call it. ShellView never routes Back to this method while Playing anyway -
+                // it calls Go(AppScreen.Paused) directly (see ShellView.HandleInput's comment
+                // on the Playing case) - so this falls through to the same no-op as Title.
+                // Do not resurrect a Playing case that calls anything but QuitToLevels().
                 case AppScreen.Title:
                 default:
                     break;

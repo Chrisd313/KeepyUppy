@@ -42,6 +42,11 @@ namespace KeepyUppy.Runtime
         int _drawnPauseCursor = -1;
         int _drawnResultsCursor = -1;
 
+        // Set by OnScreenChanged whenever the screen changes mid-Update (only ObserveWin can
+        // do this today), so HandleInput below can tell that this frame's already-latched
+        // intents were sampled for a screen that is no longer current. See Update's comment.
+        bool _screenChangedThisFrame;
+
         void Awake()
         {
             // Fired only on an actual screen change (ScreenStack.Go is a no-op otherwise),
@@ -64,14 +69,29 @@ namespace KeepyUppy.Runtime
             // there is nothing to observe a win on, fast-forward or pause.
             SimDriver driver = Bootstrap != null ? Bootstrap.Session?.Driver : null;
 
+            _screenChangedThisFrame = false;
+
             if (driver != null)
             {
                 // Edge detection lives in ScreenStack, not here — see ObserveWin's comment
                 // for why a level-triggered check in this file is the bug this method fixes.
+                // ObserveWin can flip the current screen (Playing -> Results) right here, in
+                // the middle of this method, off the balloon reaching the gate mid-frame.
                 _stack.ObserveWin(driver.World.IsWon);
             }
 
-            HandleInput();
+            // Race this guards: _input.Sample() above already committed this frame's intents
+            // for whichever screen was current when Update started. If ObserveWin just moved
+            // Playing -> Results, those intents were latched for Playing (the player was
+            // bumping the balloon with Space, the same key as Results' Confirm) but are about
+            // to be read by HandleInput for Results instead - confirming "NEXT LEVEL", or
+            // quitting on a stray Esc, on the very frame the room was won, before the player
+            // has seen the screen. No screen may act on input latched while a different screen
+            // was current, so a transition this frame throws this frame's input away rather
+            // than let the new screen read it. This looks redundant on a quiet read - the
+            // player "obviously" didn't press Confirm for Results - until you remember Space
+            // wins the frame that also confirms the win screen.
+            if (!_screenChangedThisFrame) HandleInput();
 
             if (driver != null)
             {
@@ -87,14 +107,16 @@ namespace KeepyUppy.Runtime
 
         /// <summary>
         /// The manifest only needs loading once. Deferred out of Awake because Bootstrap is
-        /// not set until after AddComponent returns (see the class comment).
+        /// not set until after AddComponent returns (see the class comment). Reads
+        /// <see cref="SimBootstrap.Index"/> rather than re-reading the file through
+        /// <c>Bootstrap.Levels</c> - there is exactly one manifest in memory this way, not two
+        /// copies (this one and Bootstrap's) that could disagree after an edit.
         /// </summary>
         void EnsureInitialized()
         {
-            if (_initialized || Bootstrap == null || Bootstrap.Levels == null) return;
+            if (_initialized || Bootstrap == null || Bootstrap.Index == null) return;
 
-            LevelIndex index = Bootstrap.Levels.TryLoadIndex(out LevelIndex loaded) ? loaded : new LevelIndex();
-            _levelSelect = new LevelSelectModel(index);
+            _levelSelect = new LevelSelectModel(Bootstrap.Index);
             _initialized = true;
         }
 
@@ -116,11 +138,10 @@ namespace KeepyUppy.Runtime
                     break;
 
                 case AppScreen.Playing:
-                    // Esc during play pauses, it does not exit to the level select - see the
-                    // class comment on the Paused case. ScreenStack.Back()'s own
-                    // Playing -> LevelSelect mapping is left as-is (it is what an in-menu
-                    // "quit to select" action would use); this is the shell explicitly asking
-                    // for a different screen, not asking "back" to decide for it.
+                    // Esc during play pauses, it does not exit to the level select. This calls
+                    // Go(Paused) directly rather than Back() - ScreenStack.Back() deliberately
+                    // has no Playing case at all (see its comment): the only safe way to leave
+                    // a running session is QuitToLevels(), which Back() cannot call.
                     if (_input.Back) _stack.Go(AppScreen.Paused);
                     break;
 
@@ -185,6 +206,13 @@ namespace KeepyUppy.Runtime
         /// </summary>
         void OnScreenChanged(AppScreen from, AppScreen to)
         {
+            // Any transition invalidates this frame's already-latched input for whoever is
+            // current now - see Update's comment on _screenChangedThisFrame. Not just the
+            // Results case: the race is in principle the same for any screen change that can
+            // happen between Sample() and HandleInput(), and ObserveWin is the only thing that
+            // can move the screen there today, but nothing here should assume it stays that way.
+            _screenChangedThisFrame = true;
+
             if (to != AppScreen.Results) return;
 
             string next = Bootstrap?.Index?.NextAfter(Bootstrap?.Session?.LevelId);
