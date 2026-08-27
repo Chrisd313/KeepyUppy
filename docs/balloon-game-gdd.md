@@ -629,11 +629,19 @@ Placeholder direction only; not blocking.
 
 ## 15. Metagame & progression — WORKING
 
-- Level-select grid per world — **built in phase B**, but shows only world and level names right now. No medals, times or death counts yet: those all read from save data, which is phase C. The grid and its cursor (`LevelSelectModel`) are ready for that data; nothing about the layout needs to change to add it.
+- Level-select grid per world — **built in phase B**, with completion, the touch-count medal
+  and best times **added in phase C**. Death counts are still per-session and not shown on
+  the grid.
 - Per-level death counter, displayed and never hidden
-- **Touch-count medal** — par per level, set from playtest metrics (§18), never from guesswork
-- Completion time tracked, shown, no leaderboard at launch
-- No unlock gating beyond world completion. No stars, no currency, no cosmetics.
+- **Touch-count medal** — three tiers against `meta.par_touches`: gold at or under par, silver
+  within three over, bronze otherwise. Par is set from playtest metrics (§18), never from
+  guesswork, and a par left unset never awards gold. The medal is graded when the room is won
+  and stored, so **re-tuning a par does not re-grade existing records** until the level is
+  played again.
+- Completion time tracked, shown, no leaderboard at launch — the fastest single attempt,
+  stored in frames.
+- No unlock gating beyond world completion. **The rule is derived and tested
+  (`SaveModel.WorldUnlocked`) but gates nothing yet.** No stars, no currency, no cosmetics.
 - Progression must tolerate skipped levels (§17.4)
 
 ---

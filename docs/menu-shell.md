@@ -69,6 +69,8 @@ accessibility assist — implemented, not yet exposed in a settings screen.
 | `LevelSelectModel` | the world/level cursor and what is selectable |
 | `OptionMenu` | the cursor over pause and results options |
 | `LevelIndex.NextAfter` | what level follows this one |
+| `SaveModel` | grading a run against par, merging it into a record, world unlock, time formatting |
+| `SaveService` | the save in memory, and the only thing that touches an `ISaveStore` |
 
 `ShellView` is a MonoBehaviour with no automated tests, by design. It samples input, calls
 into those classes, and redraws when their state changes.
@@ -117,12 +119,12 @@ origin or an invisible screen — there is no half-finished state to be careful 
 
 ### Anchor order per screen
 
-| Screen | 0 | 1 | 2 |
-|---|---|---|---|
-| `Title` | "KEEPY UPPY" heading | "PRESS SPACE" prompt | — |
-| `LevelSelect` | world name header (or "NO LEVELS" when the manifest is empty — the two never draw together, so they share the slot) | top of the level list; rows step down from it by the code default's spacing | "< WORLD >" hint, drawn only with more than one world |
-| `Paused` | "PAUSED" heading | top of the option list | — |
-| `Results` | "ROOM CLEARED" heading | touch-count line | top of the option list |
+| Screen | 0 | 1 | 2 | 3 |
+|---|---|---|---|---|
+| `Title` | "KEEPY UPPY" heading | "PRESS SPACE" prompt | — | — |
+| `LevelSelect` | world name header (or "NO LEVELS" when the manifest is empty — the two never draw together, so they share the slot) | top of the level list; rows step down from it by the code default's spacing | "< WORLD >" hint, drawn only with more than one world | — |
+| `Paused` | "PAUSED" heading | top of the option list | — | — |
+| `Results` | "ROOM CLEARED" heading | touch count and medal | completion time | top of the option list |
 
 This table is duplicated in the `///` comment above each `Draw*` method in `ShellView.cs`. If
 the two disagree, **the code comment is the one actually read at runtime** and this table is
@@ -139,28 +141,34 @@ stale.
   wiring is checked by hand.
 - **No settings screen.** GDD §16's accessibility toggles — slow motion, reduced screen shake,
   remapping — have nowhere to live yet.
+- **A re-tuned par does not re-grade existing records.** The medal is graded at win time and
+  stored, because par lives inside each level file and grading in the menu would mean parsing
+  every level in the game to draw it. `bestTouches` is stored too, so a retroactive re-grade
+  is possible later without a replay — see the phase C spec §1.
+- **World unlock is derived and tested but gates nothing.** `SaveModel.WorldUnlocked` exists
+  and is called by no one; there is one world to gate today.
 
-## 7. What's next: phase C — progression
+## 7. Progression
 
-The level select shows level ids and nothing else. GDD §15 wants it showing per-level
-completion, the touch-count medal against a par, and a best time — none of which survive a
-restart today, because **nothing persists**.
+Built in phase C. Clears, the touch-count medal and best times persist and read back on the
+level select and the Results screen.
 
-Phase C is that: save data, and the grid reading from it.
+- One JSON blob in `PlayerPrefs` under `keepyuppy.save` — IndexedDB on WebGL, a file
+  elsewhere, so no platform-specific code. `PlayerPrefsSaveStore` calls `PlayerPrefs.Save()`
+  explicitly; without it a tab closed straight after a clear loses it.
+- Per level: `cleared`, `bestTouches`, `bestTimeFrames`, `medal` — **frames, not seconds**,
+  keeping `SimClock` the only measure of time in the project.
+- The medal is three tiers against `meta.par_touches`: gold at or under par, silver within
+  three over, bronze otherwise. **An unset par (`0`) never awards gold** — par arrives from
+  playtest metrics, so unset is the normal state while a level is being authored.
+- Best time is the fastest single attempt. `SimWorld.WinningFrames` is a duration — `Clock.Step
+  + 1` at the moment the gate accepts, i.e. how many steps the winning attempt took — and
+  `Clock` resets every attempt, so deaths cost nothing but the attempt.
+- Death counts are still per-session and deliberately not persisted.
+- A `LEVEL_EDITOR`-only wipe: hold `Backspace` on the level select for about a second.
 
-The design is already written — see `docs/superpowers/specs/2026-08-24-menus-and-level-list-design.md`,
-section 2, which settles the schema and where it lives:
+The design and its rejected alternatives are in
+`docs/superpowers/specs/2026-08-27-progression-save-data-design.md`.
 
-- one JSON blob in `PlayerPrefs` under a single key (IndexedDB on WebGL, a file elsewhere, so
-  no platform-specific code)
-- per level: `cleared`, `bestTouches`, `bestTimeFrames` — **frames, not seconds**, keeping
-  `SimClock` the only measure of time in the project
-- a `version` field so a schema change migrates rather than wipes
-- world unlock derived, never stored: world N opens when every level of N−1 is cleared
-
-Death counts are deliberately excluded. GDD §15 wants them displayed and never hidden, but
-says nothing about persisting them, and a per-session counter is the more useful number while
-levels are still being tuned.
-
-That spec section is the starting point for the phase C plan; phases A and B were built the
-same way and their plans are under `docs/superpowers/plans/`.
+**What progression still does not do:** gate anything (§6), scroll a long level list (§6), or
+offer a settings screen for GDD §16's accessibility toggles.
