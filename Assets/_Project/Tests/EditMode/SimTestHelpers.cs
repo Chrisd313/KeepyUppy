@@ -28,6 +28,7 @@ namespace KeepyUppy.SimTests
         public bool grounded;
         public bool isDead;
         public bool isWon;
+        public int winningFrames;
 
         /// <summary>
         /// Entity state, folded to one value per field so the snapshot does not have to know
@@ -54,6 +55,7 @@ namespace KeepyUppy.SimTests
             grounded = w.Player.Grounded,
             isDead = w.IsDead,
             isWon = w.IsWon,
+            winningFrames = w.WinningFrames,
             entityPositions = FoldPositions(w.Entities),
             entityExposure = FoldExposure(w.Entities),
         };
@@ -104,6 +106,7 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(grounded, other.grounded, $"{context}: grounded");
             Assert.AreEqual(isDead, other.isDead, $"{context}: isDead");
             Assert.AreEqual(isWon, other.isWon, $"{context}: isWon");
+            Assert.AreEqual(winningFrames, other.winningFrames, $"{context}: winningFrames");
             Assert.AreEqual(entityPositions, other.entityPositions, $"{context}: entity positions");
             Assert.AreEqual(entityExposure, other.entityExposure, $"{context}: entity exposure");
         }
