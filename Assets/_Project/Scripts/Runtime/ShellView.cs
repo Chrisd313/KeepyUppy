@@ -407,8 +407,8 @@ namespace KeepyUppy.Runtime
 
             // No scrolling and no clamp: past nine entries this list runs off the bottom of
             // the 640x360 screen. Worlds are planned at ~10 levels (GDD), so this is a known
-            // future defect, not an oversight - w1 only has two levels today, which is why it
-            // hasn't been hit. Deliberately not fixed here; scrolling is deferred.
+            // future defect, not an oversight. Deliberately not fixed here; scrolling is
+            // deferred, and a wider row does not make it any worse.
             IReadOnlyList<string> levels = _levelSelect.CurrentWorldLevels;
             Vector2 listTop = Anchor(layout, 1, new Vector2(4f, 13f));
             float y = listTop.y;
@@ -416,7 +416,7 @@ namespace KeepyUppy.Runtime
             {
                 bool current = i == _levelSelect.LevelCursor;
                 Color colour = current ? SimPalette.Text : SimPalette.TextDim;
-                string line = (current ? "> " : "  ") + levels[i];
+                string line = (current ? "> " : "  ") + levels[i].ToUpperInvariant() + Progress(levels[i]);
                 TextView.Draw(parent, line, new Vector2(listTop.x, y), colour);
                 y -= 1.5f;
             }
@@ -424,6 +424,33 @@ namespace KeepyUppy.Runtime
             // Only worth the hint when there is somewhere else to go.
             if (_levelSelect.WorldCount > 1)
                 TextView.Draw(parent, "< WORLD >", Anchor(layout, 2, new Vector2(4f, 2f)), SimPalette.TextDim);
+        }
+
+        /// <summary>
+        /// A cleared level's marks: "  * G  0:47.32". Empty for a level never finished, so an
+        /// unplayed grid reads exactly as it did before there was save data.
+        ///
+        /// '*' rather than a tick, and a letter rather than a medal, because BitmapFont has
+        /// neither glyph - see MedalLabel. '&gt;' is already the cursor prefix, so the clear
+        /// mark has to be something else.
+        /// </summary>
+        string Progress(string levelId)
+        {
+            LevelRecord record = Bootstrap?.Save?.RecordFor(levelId);
+            if (record == null || !record.cleared) return "";
+
+            return $"  * {MedalInitial((Medal)record.medal)}  {SaveModel.FormatTime(record.bestTimeFrames)}";
+        }
+
+        static string MedalInitial(Medal medal)
+        {
+            switch (medal)
+            {
+                case Medal.Gold: return "G";
+                case Medal.Silver: return "S";
+                case Medal.Bronze: return "B";
+                default: return "-";
+            }
         }
 
         /// <summary>Anchors (see ScreenLayout): 0 = "paused" header, 1 = top of the option list.</summary>
