@@ -53,6 +53,14 @@ namespace KeepyUppy.Runtime
         // intents were sampled for a screen that is no longer current. See Update's comment.
         bool _screenChangedThisFrame;
 
+#if LEVEL_EDITOR
+        // Render frames Backspace has been held on the level select. Roughly a second at 60 fps,
+        // deliberately not exact: this is a dev affordance, not a timed input (GDD 16 forbids
+        // those in gameplay).
+        const int WipeHoldFrames = 60;
+        int _wipeHeldFrames;
+#endif
+
         void Awake()
         {
             // Fired only on an actual screen change (ScreenStack.Go is a no-op otherwise),
@@ -145,6 +153,7 @@ namespace KeepyUppy.Runtime
                     if (_input.Confirm) ConfirmLevelSelect();
 #if LEVEL_EDITOR
                     if (_input.EditPressed) StartEditing();
+                    HandleWipeHold();
 #endif
                     if (_input.Back) _stack.Back();
                     break;
@@ -300,6 +309,26 @@ namespace KeepyUppy.Runtime
             // Same reset the ordinary start path needs — see StartLevel's comment.
             _stack.ResetWin();
             _stack.Go(AppScreen.Playing);
+        }
+
+        /// <summary>
+        /// Dev-only save wipe: re-testing a first clear otherwise means editing the registry
+        /// or IndexedDB by hand. Held, not tapped, and never in a shipping build — a
+        /// player-facing wipe needs a confirmation flow and a settings screen to live in, and
+        /// there is no settings screen.
+        /// </summary>
+        void HandleWipeHold()
+        {
+            if (!_input.WipeSaveHeld)
+            {
+                _wipeHeldFrames = 0;
+                return;
+            }
+
+            if (++_wipeHeldFrames != WipeHoldFrames) return;
+
+            Bootstrap?.Save?.Wipe();
+            Debug.LogWarning("[save] wiped");
         }
 #endif
 

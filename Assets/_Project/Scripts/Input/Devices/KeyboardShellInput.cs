@@ -35,6 +35,7 @@ namespace KeepyUppy.InputLayer.Devices
         public bool Back { get; private set; }
         public bool EditPressed { get; private set; }
         public bool FastForwardHeld { get; private set; }
+        public bool WipeSaveHeld { get; private set; }
 
         /// <summary>Call once per render frame, before the next fixed step runs.</summary>
         public void Latch()
@@ -43,6 +44,7 @@ namespace KeepyUppy.InputLayer.Devices
             if (kb == null || Suppressed)
             {
                 FastForwardHeld = false;
+                WipeSaveHeld = false;
                 return;
             }
 
@@ -69,6 +71,12 @@ namespace KeepyUppy.InputLayer.Devices
             // Held, not latched: FixedUpdate can run more than once per render frame, and each
             // of those reads must see the key's live state, not a value stale since Sample().
             FastForwardHeld = kb.fKey.isPressed;
+
+            // Backspace: bound nowhere else in the project. Deliberately NOT Delete, which
+            // LevelEditorController already uses to delete the selected entity - the two are
+            // never live at once, but "the destructive key is a different key in each context"
+            // is a thing you find out by wiping a save.
+            WipeSaveHeld = kb.backspaceKey.isPressed;
         }
 
         /// <summary>Commit the latched edges. Called once, when a menu screen reads them.</summary>
@@ -106,6 +114,7 @@ namespace KeepyUppy.InputLayer.Devices
             Back = false;
             EditPressed = false;
             FastForwardHeld = false;
+            WipeSaveHeld = false;
         }
     }
 }
