@@ -261,10 +261,16 @@ state; death counts stay per-session by design.
 
 ## 6. The dev wipe
 
-Behind `#if LEVEL_EDITOR`, on the level select: hold `Delete` for about a second to clear the
-blob and redraw. Held rather than tapped so it cannot be hit by accident, and `Delete` is
-outside every reserved set in CLAUDE.md — gameplay's `Space W A D J R Esc` and the arrows,
-and the shell's `E` and `F`.
+Behind `#if LEVEL_EDITOR`, on the level select: hold `Backspace` for about a second to clear
+the blob and redraw. Held rather than tapped so it cannot be hit by accident.
+
+**`Backspace`, not `Delete`.** `Delete` reads free in CLAUDE.md's shell list, but
+`LevelEditorController` already binds `deleteKey` to "delete the selected entity", and
+CLAUDE.md's rule is that a new binding avoids the *combined* gameplay + editor + shell set.
+The two would never be live at the same moment — the editor's `Delete` only acts inside an
+editing session — but "the destructive key is a different key in each context" is exactly the
+kind of thing that is discovered by wiping a save. `Backspace` is bound nowhere in the
+project.
 
 Without it, re-testing a first clear means editing the registry or IndexedDB by hand. It does
 not ship: a player-facing wipe needs a confirmation flow and a settings screen to live in, and
