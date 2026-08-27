@@ -1,4 +1,5 @@
 using KeepyUppy.Shell.Save;
+using KeepyUppy.Sim.Level;
 using NUnit.Framework;
 
 namespace KeepyUppy.SimTests
@@ -137,6 +138,73 @@ namespace KeepyUppy.SimTests
         {
             Assert.IsNull(SaveModel.RecordFor(Empty(), "w1_01"));
             Assert.IsNull(SaveModel.RecordFor(new SaveData { levels = null }, "w1_01"));
+        }
+
+        // ------------------------------------------------------------------ formatting
+
+        [Test]
+        public void TimeFormatsAsMinutesSecondsAndHundredths()
+        {
+            Assert.AreEqual("0:00.00", SaveModel.FormatTime(0));
+            Assert.AreEqual("0:01.00", SaveModel.FormatTime(60));
+            Assert.AreEqual("0:00.50", SaveModel.FormatTime(30), "half a second at 60 Hz");
+            Assert.AreEqual("1:00.00", SaveModel.FormatTime(3600));
+            Assert.AreEqual("10:00.00", SaveModel.FormatTime(36000), "past ten minutes it just gets wider");
+        }
+
+        [Test]
+        public void ANegativeTimeReadsAsZero()
+        {
+            // Nothing writes one; the save file is editable and the menu must not draw junk.
+            Assert.AreEqual("0:00.00", SaveModel.FormatTime(-1));
+        }
+
+        // ------------------------------------------------------------------ unlock
+
+        static LevelIndex TwoWorlds() => new LevelIndex
+        {
+            worlds = new[]
+            {
+                new LevelWorld { id = "w1", name = "One", levels = new[] { "w1_01", "w1_02" } },
+                new LevelWorld { id = "w2", name = "Two", levels = new[] { "w2_01" } },
+            },
+        };
+
+        static SaveData Cleared(params string[] ids)
+        {
+            SaveData data = new SaveData();
+            foreach (string id in ids) data = SaveModel.Merge(data, new RunResult(id, 5, 300, 7)).Data;
+
+            return data;
+        }
+
+        [Test]
+        public void TheFirstWorldIsAlwaysOpen()
+        {
+            Assert.IsTrue(SaveModel.WorldUnlocked(TwoWorlds(), new SaveData(), 1));
+        }
+
+        [Test]
+        public void ALaterWorldNeedsEveryLevelOfThePreviousOne()
+        {
+            Assert.IsFalse(SaveModel.WorldUnlocked(TwoWorlds(), Cleared("w1_01"), 2),
+                           "one of two is not the whole world");
+            Assert.IsTrue(SaveModel.WorldUnlocked(TwoWorlds(), Cleared("w1_01", "w1_02"), 2));
+        }
+
+        [Test]
+        public void SkippingALevelStillBlocksTheNextWorld()
+        {
+            // GDD 15: progression tolerates skipped levels WITHIN a world, and the world gate
+            // is the one place that intentionally does not.
+            Assert.IsFalse(SaveModel.WorldUnlocked(TwoWorlds(), Cleared("w1_02"), 2));
+        }
+
+        [Test]
+        public void AnOutOfRangeOrMalformedWorldIsLocked()
+        {
+            Assert.IsFalse(SaveModel.WorldUnlocked(TwoWorlds(), Cleared("w1_01", "w1_02"), 3));
+            Assert.IsFalse(SaveModel.WorldUnlocked(null, new SaveData(), 1));
         }
     }
 }

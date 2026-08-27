@@ -1,3 +1,6 @@
+using KeepyUppy.Sim;
+using KeepyUppy.Sim.Level;
+
 namespace KeepyUppy.Shell.Save
 {
     /// <summary>One completed run, as handed to <see cref="SaveModel.Merge"/>.</summary>
@@ -136,5 +139,50 @@ namespace KeepyUppy.Shell.Save
         }
 
         static int Min(int a, int b) => a < b ? a : b;
+
+        /// <summary>
+        /// Frames as M:SS.CC. Frames are the stored unit (SimClock is the only measure of time
+        /// in this project); this is the only place they become something to read.
+        /// </summary>
+        public static string FormatTime(int frames)
+        {
+            if (frames < 0) frames = 0;
+
+            int totalHundredths = frames * 100 / SimClock.Hz;
+            int hundredths = totalHundredths % 100;
+            int totalSeconds = totalHundredths / 100;
+            int seconds = totalSeconds % 60;
+            int minutes = totalSeconds / 60;
+
+            return $"{minutes}:{seconds:00}.{hundredths:00}";
+        }
+
+        /// <summary>
+        /// World 1 is always open; world N opens when every level of world N-1 is cleared
+        /// (menus spec 2). Derived, never stored — a stored unlock is a second source of truth
+        /// that can disagree with the records it was derived from.
+        ///
+        /// NOTHING CALLS THIS YET. Gating is deliberately out of scope for phase C (spec 6):
+        /// there is one world to gate today. It is written here because this is where a reader
+        /// looks for it and because its skipped-level behaviour is worth pinning down while
+        /// the rest is fresh. If gating never arrives, deleting this costs nothing.
+        /// </summary>
+        public static bool WorldUnlocked(LevelIndex index, SaveData data, int worldNumber)
+        {
+            if (index?.worlds == null) return false;
+            if (worldNumber < 1 || worldNumber > index.worlds.Length) return false;
+            if (worldNumber == 1) return true;
+
+            LevelWorld previous = index.worlds[worldNumber - 2];
+            if (previous?.levels == null) return true;   // nothing to clear, nothing to block
+
+            foreach (string id in previous.levels)
+            {
+                LevelRecord record = RecordFor(data, id);
+                if (record == null || !record.cleared) return false;
+            }
+
+            return true;
+        }
     }
 }
