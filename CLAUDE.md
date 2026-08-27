@@ -8,22 +8,34 @@ Project guidance for Claude Code. Read this before touching anything.
 
 A 2D single-screen pixel-art platformer in Unity. The player escorts a balloon across a hostile room by keeping it airborne — heading it, palming it, dodging things that pop it. *Level Devil* meets the playground game Keepy Uppy.
 
-**Current phase: P0 — vertical slice.** See `docs/gdd.md` §20.2 for phase definitions and exit criteria.
+**Current phase: P0 — vertical slice.** See `docs/balloon-game-gdd.md` §20.2 for phase definitions and exit criteria.
 
 ## Read first
 
 | Document | Contains |
 |---|---|
-| `docs/gdd.md` | The design. Section numbers below refer to it. |
+| `docs/balloon-game-gdd.md` | The design. Section numbers below refer to it. |
 | `docs/level-editor-spec.md` | The dev-only in-game level editor, including the level JSON schema. |
+| `docs/menu-shell.md` | The front end: screens, bindings, time controls, and how to author screen prefabs. |
 
 Sections in the GDD are tagged **LOCKED** / **WORKING** / **SPECULATIVE**. LOCKED items are load-bearing — see the next section.
+
+**Work in flight** lives under `docs/superpowers/`: `specs/` holds the design for a piece of
+work and the reasoning behind it, `plans/` the task-by-task implementation plan built from it.
+Each phase so far has gone spec → plan → build, and the spec is the binding authority when the
+two disagree. Read the relevant spec before extending something it covers — it usually records
+why an obvious-looking alternative was rejected.
+
+**Next up is phase C — progression:** save data, and the level select showing completion, the
+touch-count medal and best times. The design is already written — see
+`docs/superpowers/specs/2026-08-24-menus-and-level-list-design.md` §2 for the schema, and
+`docs/menu-shell.md` §7 for what the screen is missing without it. Nothing persists today.
 
 ---
 
 ## Non-negotiables
 
-These are the rules that get silently broken and are expensive to recover from. Do not violate them without an explicit instruction, and if instructed, add a dated row to `docs/gdd.md` §22.
+These are the rules that get silently broken and are expensive to recover from. Do not violate them without an explicit instruction, and if instructed, add a dated row to `docs/balloon-game-gdd.md` §22.
 
 ### Determinism (GDD §6.1)
 
@@ -200,7 +212,7 @@ If a test run hangs for more than about two minutes, stop it and tell me to clos
 
 ### The determinism test is load-bearing
 
-`docs/gdd.md` §6.1 is the rule most likely to regress silently, because breaking it produces no error, no warning, and no visible symptom until someone tries to learn a level.
+`docs/balloon-game-gdd.md` §6.1 is the rule most likely to regress silently, because breaking it produces no error, no warning, and no visible symptom until someone tries to learn a level.
 
 **Any change that adds state to the simulation must be covered by the replay-equality test in the same commit.** A new field on the balloon, a new hazard with internal state, a new zone type — if it isn't included in the two-run comparison, the test will keep passing while the guarantee quietly rots.
 
@@ -226,7 +238,7 @@ PlayMode tests and anything requiring rendering are also out of scope for this l
 
 - **Do not author level content past level 10** until the control-scheme experiment (GDD §5.3, open question #1) is settled. It changes every level.
 - **Do not do an art pass** before the same decision closes. Placeholder colour blocks only, on the final grid, with the reserved-colour rule enforced (GDD §13.1).
-- **When a LOCKED item changes**, add a dated row to `docs/gdd.md` §22 with the rationale in the same commit.
+- **When a LOCKED item changes**, add a dated row to `docs/balloon-game-gdd.md` §22 with the rationale in the same commit.
 - **When a WORKING value is tuned to something better**, update the table in the GDD. The tuning tables should reflect reality, not the original guess.
 - Tuning values live in serialised profiles under `Assets/StreamingAssets/levels/_tuning/`, **not** hardcoded in scripts. Everything in GDD §6.4 and §7.1 is a slider.
 - Prefer plain C# classes over MonoBehaviours for simulation logic. The sim should be testable without a scene.
