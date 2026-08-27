@@ -48,5 +48,95 @@ namespace KeepyUppy.SimTests
             // Nothing writes a negative par, but the level file is hand-editable JSON.
             Assert.AreEqual(Medal.Bronze, SaveModel.Grade(1, -5));
         }
+
+        // ------------------------------------------------------------------ merging
+
+        static SaveData Empty() => new SaveData();
+
+        [Test]
+        public void AFirstClearCreatesTheRecordAndFlagsNoBest()
+        {
+            SaveResult result = SaveModel.Merge(Empty(), new RunResult("w1_01", 9, 600, 7));
+
+            Assert.AreEqual(1, result.Data.levels.Length);
+            Assert.AreEqual("w1_01", result.Record.id);
+            Assert.IsTrue(result.Record.cleared);
+            Assert.AreEqual(9, result.Record.bestTouches);
+            Assert.AreEqual(600, result.Record.bestTimeFrames);
+            Assert.AreEqual((int)Medal.Silver, result.Record.medal);
+
+            // Nothing was beaten - there was nothing there to beat.
+            Assert.IsFalse(result.NewBestTouches);
+            Assert.IsFalse(result.NewBestTime);
+        }
+
+        [Test]
+        public void FewerTouchesBeatsTheRecordAndRegradesTheMedal()
+        {
+            SaveData data = SaveModel.Merge(Empty(), new RunResult("w1_01", 9, 600, 7)).Data;
+
+            SaveResult result = SaveModel.Merge(data, new RunResult("w1_01", 6, 900, 7));
+
+            Assert.AreEqual(6, result.Record.bestTouches);
+            Assert.AreEqual((int)Medal.Gold, result.Record.medal, "the medal follows bestTouches");
+            Assert.IsTrue(result.NewBestTouches);
+            Assert.IsFalse(result.NewBestTime, "a slower run does not set a time record");
+            Assert.AreEqual(600, result.Record.bestTimeFrames, "and does not overwrite one");
+        }
+
+        [Test]
+        public void AFasterRunSetsTheTimeWithoutTouchingTheMedal()
+        {
+            SaveData data = SaveModel.Merge(Empty(), new RunResult("w1_01", 6, 900, 7)).Data;
+
+            SaveResult result = SaveModel.Merge(data, new RunResult("w1_01", 20, 500, 7));
+
+            Assert.AreEqual(500, result.Record.bestTimeFrames);
+            Assert.IsTrue(result.NewBestTime);
+            Assert.AreEqual(6, result.Record.bestTouches, "a worse touch count is not a best");
+            Assert.AreEqual((int)Medal.Gold, result.Record.medal, "so the medal is untouched");
+            Assert.IsFalse(result.NewBestTouches);
+        }
+
+        [Test]
+        public void EqualIsNotBetter()
+        {
+            SaveData data = SaveModel.Merge(Empty(), new RunResult("w1_01", 6, 600, 7)).Data;
+
+            SaveResult result = SaveModel.Merge(data, new RunResult("w1_01", 6, 600, 7));
+
+            Assert.IsFalse(result.NewBestTouches);
+            Assert.IsFalse(result.NewBestTime);
+        }
+
+        [Test]
+        public void MergeDoesNotMutateTheDataItWasGiven()
+        {
+            SaveData original = SaveModel.Merge(Empty(), new RunResult("w1_01", 9, 600, 7)).Data;
+
+            SaveModel.Merge(original, new RunResult("w1_01", 2, 100, 7));
+
+            Assert.AreEqual(9, original.levels[0].bestTouches,
+                            "the caller's copy is the one that was already on screen");
+        }
+
+        [Test]
+        public void ADifferentLevelIsAppendedAndOthersAreLeftAlone()
+        {
+            SaveData data = SaveModel.Merge(Empty(), new RunResult("w1_01", 9, 600, 7)).Data;
+
+            SaveData after = SaveModel.Merge(data, new RunResult("w1_02", 4, 300, 5)).Data;
+
+            Assert.AreEqual(2, after.levels.Length);
+            Assert.AreEqual(9, SaveModel.RecordFor(after, "w1_01").bestTouches);
+            Assert.AreEqual(4, SaveModel.RecordFor(after, "w1_02").bestTouches);
+        }
+
+        [Test]
+        public void RecordForIsNullWhenTheLevelHasNeverBeenCleared()
+        {
+            Assert.IsNull(SaveModel.RecordFor(Empty(), "w1_01"));
+            Assert.IsNull(SaveModel.RecordFor(new SaveData { levels = null }, "w1_01"));
+        }
     }
 }
