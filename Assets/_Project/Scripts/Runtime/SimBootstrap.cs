@@ -9,12 +9,11 @@ using KeepyUppy.LevelEditing;
 namespace KeepyUppy.Runtime
 {
     /// <summary>
-    /// Builds a playable room entirely in code: press Play in any scene and watch the
-    /// balloon fall and bounce. Nothing is authored in a .unity file, so there is no scene
-    /// to keep in sync and no prefab to drift.
-    ///
-    /// Temporary. Replaced by the JSON level loader (level-editor-spec 3) once ILevelSource
-    /// exists.
+    /// Boots the game entirely in code: builds the sim camera and the menu shell, and loads
+    /// the level manifest, all with nothing authored in a .unity file - so there is no scene
+    /// to keep in sync and no prefab to drift. No level is loaded here; the game boots to the
+    /// title screen and a level exists only once <see cref="StartLevel"/> is called from the
+    /// level select.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class SimBootstrap : MonoBehaviour
@@ -41,61 +40,93 @@ namespace KeepyUppy.Runtime
         public static string StartingProfile = FileTuningSource.DefaultProfileName;
 
         /// <summary>
-        /// Level loaded at startup. The manifest is authoritative and overwrites this with its
-        /// first listed level whenever it lists anything (see LoadLevel below) — so changing
-        /// this constant only affects a genuinely fresh project with no manifest yet. To boot
-        /// into a different room, reorder the manifest instead.
+        /// The id newly-seeded content is written under on a genuinely fresh project with no
+        /// manifest yet (see PrepareLevelSource/SeedLevel). Nothing boots a level from this any
+        /// more - the game boots to the title screen, and a level is only loaded once the
+        /// player picks one from the level select.
         /// </summary>
         public static string StartingLevel = "w1_01";
 
-        SimDriver _driver;
         FileTuningSource _tuningSource;
+        TuningProfile _tuningProfile;
         FileLevelSource _levelSource;
-        LevelData _level;
+        LevelIndex _index;
         Camera _camera;
+
+        /// <summary>The level currently being played or edited, or null on the menus.</summary>
+        public LevelSession Session { get; private set; }
+
+        public ILevelSource Levels => _levelSource;
+        public LevelIndex Index => _index;
+
+        /// <summary>
+        /// The single sim camera built at boot. Exposed only for BeginEditing (Task 8) — the
+        /// editor reads screen-to-world through it, the same camera every view already draws
+        /// through.
+        /// </summary>
+        public Camera Camera => _camera;
 
         void Awake()
         {
-            _driver = gameObject.AddComponent<SimDriver>();
-
-            SimWorld world = _driver.World;
-            LoadTuning(world);
-            LoadLevel();
-
-            LevelLoader.ApplyAndConfigure(_level, world, _driver.Keyboard, Seed);
+            LoadTuning();
+            PrepareLevelSource();
 
             BuildCamera();
-            BuildTileViews(world.Grid);
-            BuildEntityViews(world);
-            BuildExitView(world);
-            BuildBalloonView(world.Balloon);
-            BuildPlayerView(world.Player);
-
-            gameObject.AddComponent<SimDebugOverlay>().Driver = _driver;
-
             BuildShellView();
 
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            TuningPanel panel = gameObject.AddComponent<TuningPanel>();
-            panel.Driver = _driver;
-            panel.Source = _tuningSource;
-            panel.ProfileName = StartingProfile;
-#endif
+            // The editor is a mode of a level session now, not a separate boot path — see
+            // LevelSession.BeginEditing. Nothing to install here until a level is chosen.
+        }
 
-#if LEVEL_EDITOR
-            var editor = gameObject.AddComponent<LevelEditorController>();
-            editor.Host = new BootstrapEditorHost(this, _driver, _camera, _levelSource);
-            editor.LevelId = StartingLevel;
-            editor.Begin(_level);
-#endif
+        /// <summary>
+        /// Builds a level and everything it needs. Returns null if the level cannot be read,
+        /// leaving the caller on the menu rather than in a half-built room.
+        ///
+        /// A null/empty id or a failed load must leave whatever is currently running alone —
+        /// "stay put" means the room the player is already in survives a bad request, not just
+        /// that no new one gets built. That is why the running session is torn down last, only
+        /// once the new level is known good: do not hoist EndLevel() back to the top of this
+        /// method, it would destroy a live room over a request that was always going nowhere.
+        /// </summary>
+        public LevelSession StartLevel(string id)
+        {
+            if (string.IsNullOrEmpty(id))
+                return null;
+
+            if (!_levelSource.TryLoad(id, out LevelData level))
+            {
+                Debug.LogWarning($"[level] '{id}' could not be loaded");
+                return null;
+            }
+
+            List<string> warnings = LevelValidator.Validate(level);
+            foreach (string warning in warnings) Debug.LogWarning($"[level] {id}: {warning}");
+
+            EndLevel();
+            Session = LevelSession.Create(transform, level, id, _tuningProfile, _tuningSource, Seed);
+            return Session;
+        }
+
+        /// <summary>
+        /// Destroys the level and everything it built. One Destroy, because the session is a
+        /// single root — nothing here has to remember which views exist.
+        /// </summary>
+        public void EndLevel()
+        {
+            if (Session == null) return;
+
+            Destroy(Session.gameObject);
+            Session = null;
         }
 
         /// <summary>
         /// Tuning comes from a named JSON profile (CLAUDE.md, level-editor-spec 6), not from
         /// literals in this file. The code defaults are only the seed used to write the first
         /// profile, so default.json is correct by construction rather than hand-maintained.
+        /// There is no world yet to apply it to — that happens per level in
+        /// <see cref="LevelSession.Create"/>.
         /// </summary>
-        void LoadTuning(SimWorld world)
+        void LoadTuning()
         {
             _tuningSource = new FileTuningSource();
             _tuningSource.SaveIfAbsent(FileTuningSource.DefaultProfileName, TuningProfile.Default);
@@ -103,20 +134,19 @@ namespace KeepyUppy.Runtime
             if (!_tuningSource.TryLoad(StartingProfile, out TuningProfile profile))
             {
                 Debug.LogWarning($"[tuning] profile '{StartingProfile}' not found; using code defaults");
-                return;
+                profile = TuningProfile.Default;
             }
 
-            world.Tuning = profile.balloon;
-            world.PlayerTuning = profile.player;
+            _tuningProfile = profile;
         }
 
         /// <summary>
         /// Levels are JSON (level-editor-spec 3), and the shipping game and the editor read
-        /// the same file. If the level is missing, the room built in code below seeds it once
-        /// — so the file is correct by construction rather than hand-typed, and after that the
-        /// JSON is the only source of truth.
+        /// the same file. This only prepares the source and the manifest — no level is loaded
+        /// here, since there is no session to load one into until <see cref="StartLevel"/> is
+        /// called.
         /// </summary>
-        void LoadLevel()
+        void PrepareLevelSource()
         {
             _levelSource = new FileLevelSource();
 
@@ -125,21 +155,7 @@ namespace KeepyUppy.Runtime
             bool freshProject = TryPrepareIndex(_levelSource, out LevelIndex index);
             if (freshProject) _levelSource.SaveIfAbsent(StartingLevel, SeedLevel());
 
-            // The starting level is the manifest's first, so adding a level before w1_01 in
-            // the editor changes what the game boots into - which is what a level list is for.
-            IReadOnlyList<string> listed = index.AllLevels();
-            if (listed.Count > 0) StartingLevel = listed[0];
-
-            if (!_levelSource.TryLoad(StartingLevel, out LevelData level))
-            {
-                Debug.LogWarning($"[level] '{StartingLevel}' not found; falling back to the seed room");
-                level = SeedLevel();
-            }
-
-            List<string> warnings = LevelValidator.Validate(level);
-            foreach (string warning in warnings) Debug.LogWarning($"[level] {StartingLevel}: {warning}");
-
-            _level = level;
+            _index = index;
         }
 
         /// <summary>
@@ -150,7 +166,7 @@ namespace KeepyUppy.Runtime
         ///
         /// Public and static so this decision - the part of boot most likely to regress
         /// silently - is reachable from an EditMode test without a scene. Do not fold it back
-        /// into <see cref="LoadLevel"/>; that is what made the bug it fixes untestable.
+        /// into <see cref="PrepareLevelSource"/>; that is what made the bug it fixes untestable.
         /// </summary>
         public static bool TryPrepareIndex(ILevelSource source, out LevelIndex index)
         {
@@ -258,52 +274,8 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
-        /// Tile quads follow the grid rather than being built once, so painting in the editor
-        /// shows up immediately.
-        /// </summary>
-        void BuildTileViews(TileGrid grid)
-        {
-            var root = new GameObject("Tiles");
-            root.transform.SetParent(transform, false);
-
-            root.AddComponent<TileViewSync>().Grid = grid;
-        }
-
-        /// <summary>Hazard quads follow the entities, which move every step (GDD 9).</summary>
-        void BuildEntityViews(SimWorld world)
-        {
-            var root = new GameObject("Entities");
-            root.transform.SetParent(transform, false);
-
-            root.AddComponent<EntityViewSync>().World = world;
-        }
-
-        /// <summary>The gate follows the world's exit, so editing it shows up at once.</summary>
-        void BuildExitView(SimWorld world)
-        {
-            var root = new GameObject("Exit");
-            root.transform.SetParent(transform, false);
-
-            root.AddComponent<ExitView>().World = world;
-        }
-
-        void BuildBalloonView(BalloonBody balloon)
-        {
-            float d = balloon.Radius * 2f;
-            GameObject go = QuadView.Create(
-                transform,
-                "Balloon",
-                SimPalette.Balloon,
-                balloon.Position,
-                new Vector2(d, d),
-                -1f
-            );
-            go.AddComponent<BalloonView>().Body = balloon;
-        }
-
-        /// <summary>
-        /// The shell starts on Title with the straight-to-level boot above already running
-        /// behind it (CLAUDE.md), so disabling this leaves the existing debug boot intact.
+        /// The shell is the only thing that exists at boot besides the camera — no
+        /// <see cref="SimDriver"/>, no world, no views, until a level is chosen.
         /// </summary>
         void BuildShellView()
         {
@@ -311,21 +283,7 @@ namespace KeepyUppy.Runtime
             go.transform.SetParent(transform, false);
 
             var shell = go.AddComponent<ShellView>();
-            shell.Driver = _driver;
-            shell.LevelSource = _levelSource;
-        }
-
-        void BuildPlayerView(PlayerBody player)
-        {
-            GameObject go = QuadView.Create(
-                transform,
-                "Player",
-                SimPalette.Player,
-                player.Position,
-                new Vector2(player.HalfWidth * 2f, player.HalfHeight * 2f),
-                -0.5f
-            );
-            go.AddComponent<PlayerView>().Body = player;
+            shell.Bootstrap = this;
         }
     }
 }

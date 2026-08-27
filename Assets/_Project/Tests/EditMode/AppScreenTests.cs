@@ -214,5 +214,40 @@ namespace KeepyUppy.SimTests
 
             Assert.AreEqual(AppScreen.Results, stack.Current);
         }
+
+        [Test]
+        public void QuitToLevelsLeavesPlayFromAnywhere()
+        {
+            var stack = new ScreenStack();
+
+            stack.Go(AppScreen.Playing);
+            stack.Go(AppScreen.Paused);
+            stack.QuitToLevels();
+            Assert.AreEqual(AppScreen.LevelSelect, stack.Current, "from pause");
+
+            stack.Go(AppScreen.Playing);
+            stack.ObserveWin(true);
+            stack.QuitToLevels();
+            Assert.AreEqual(AppScreen.LevelSelect, stack.Current, "from results");
+        }
+
+        [Test]
+        public void QuittingClearsTheWinEdge()
+        {
+            // Quitting a cleared room and then winning the next one must still show Results.
+            // Without this, the stale true means the next win is not a rising edge at all —
+            // the same failure as the original soft-lock, one level removed.
+            var stack = new ScreenStack();
+
+            stack.Go(AppScreen.Playing);
+            stack.ObserveWin(true);
+            Assert.AreEqual(AppScreen.Results, stack.Current);
+
+            stack.QuitToLevels();
+            stack.Go(AppScreen.Playing);
+            stack.ObserveWin(true);
+
+            Assert.AreEqual(AppScreen.Results, stack.Current, "the next win must still count");
+        }
     }
 }

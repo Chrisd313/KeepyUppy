@@ -21,6 +21,7 @@ namespace KeepyUppy.InputLayer.Devices
         Vector2Int _navigateLatched;
         bool _confirmLatched;
         bool _backLatched;
+        bool _editLatched;
 
         /// <summary>
         /// While true, every intent reads neutral and no edge is latched. Set by the driver
@@ -32,6 +33,7 @@ namespace KeepyUppy.InputLayer.Devices
         public Vector2Int Navigate { get; private set; }
         public bool Confirm { get; private set; }
         public bool Back { get; private set; }
+        public bool EditPressed { get; private set; }
         public bool FastForwardHeld { get; private set; }
 
         /// <summary>Call once per render frame, before the next fixed step runs.</summary>
@@ -60,6 +62,10 @@ namespace KeepyUppy.InputLayer.Devices
 
             _backLatched |= kb.escapeKey.wasPressedThisFrame;
 
+            // E: free of gameplay's Space W A D J R Esc, the arrows and left Shift, and of the
+            // editor's own 1 2 3 5 P U G H T L Delete and Ctrl+S/Z/Y.
+            _editLatched |= kb.eKey.wasPressedThisFrame;
+
             // Held, not latched: FixedUpdate can run more than once per render frame, and each
             // of those reads must see the key's live state, not a value stale since Sample().
             FastForwardHeld = kb.fKey.isPressed;
@@ -80,10 +86,12 @@ namespace KeepyUppy.InputLayer.Devices
             Navigate = _navigateLatched;
             Confirm = _confirmLatched;
             Back = _backLatched;
+            EditPressed = _editLatched;
 
             _navigateLatched = Vector2Int.zero;
             _confirmLatched = false;
             _backLatched = false;
+            _editLatched = false;
         }
 
         void ResetIntents()
@@ -91,10 +99,12 @@ namespace KeepyUppy.InputLayer.Devices
             _navigateLatched = Vector2Int.zero;
             _confirmLatched = false;
             _backLatched = false;
+            _editLatched = false;
 
             Navigate = Vector2Int.zero;
             Confirm = false;
             Back = false;
+            EditPressed = false;
             FastForwardHeld = false;
         }
     }

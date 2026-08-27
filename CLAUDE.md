@@ -8,22 +8,34 @@ Project guidance for Claude Code. Read this before touching anything.
 
 A 2D single-screen pixel-art platformer in Unity. The player escorts a balloon across a hostile room by keeping it airborne — heading it, palming it, dodging things that pop it. *Level Devil* meets the playground game Keepy Uppy.
 
-**Current phase: P0 — vertical slice.** See `docs/gdd.md` §20.2 for phase definitions and exit criteria.
+**Current phase: P0 — vertical slice.** See `docs/balloon-game-gdd.md` §20.2 for phase definitions and exit criteria.
 
 ## Read first
 
 | Document | Contains |
 |---|---|
-| `docs/gdd.md` | The design. Section numbers below refer to it. |
+| `docs/balloon-game-gdd.md` | The design. Section numbers below refer to it. |
 | `docs/level-editor-spec.md` | The dev-only in-game level editor, including the level JSON schema. |
+| `docs/menu-shell.md` | The front end: screens, bindings, time controls, and how to author screen prefabs. |
 
 Sections in the GDD are tagged **LOCKED** / **WORKING** / **SPECULATIVE**. LOCKED items are load-bearing — see the next section.
+
+**Work in flight** lives under `docs/superpowers/`: `specs/` holds the design for a piece of
+work and the reasoning behind it, `plans/` the task-by-task implementation plan built from it.
+Each phase so far has gone spec → plan → build, and the spec is the binding authority when the
+two disagree. Read the relevant spec before extending something it covers — it usually records
+why an obvious-looking alternative was rejected.
+
+**Next up is phase C — progression:** save data, and the level select showing completion, the
+touch-count medal and best times. The design is already written — see
+`docs/superpowers/specs/2026-08-24-menus-and-level-list-design.md` §2 for the schema, and
+`docs/menu-shell.md` §7 for what the screen is missing without it. Nothing persists today.
 
 ---
 
 ## Non-negotiables
 
-These are the rules that get silently broken and are expensive to recover from. Do not violate them without an explicit instruction, and if instructed, add a dated row to `docs/gdd.md` §22.
+These are the rules that get silently broken and are expensive to recover from. Do not violate them without an explicit instruction, and if instructed, add a dated row to `docs/balloon-game-gdd.md` §22.
 
 ### Determinism (GDD §6.1)
 
@@ -119,7 +131,7 @@ Never introduce a second level format. The moment they diverge, the editor stops
 
 ### Keybind collisions
 
-Gameplay reserves `Space` `W` `A` `D` `J` `R` `Esc` and the arrow keys. Editor bindings must avoid that set. `R` is intentionally shared — it means "restart" in both contexts.
+Gameplay reserves `Space` `W` `A` `D` `J` `R` `Esc` and the arrow keys. The shell reserves `E` (opens the level editor from the level select) and `F` (holds fast-forward). Editor bindings must avoid that combined set. `R` is intentionally shared — it means "restart" in both contexts.
 
 ### Rendering
 
@@ -131,9 +143,17 @@ Gameplay reserves `Space` `W` `A` `D` `J` `R` `Esc` and the arrow keys. Editor b
 
 The primary shipping risk (GDD §17.2). IL2CPP with aggressive stripping, Brotli compression, no unused packages, one texture atlas per world. **Check the build size at the end of P0**, not later.
 
+### Code over content
+
+Do not create or edit `.unity`, `.prefab` or `.asset` files. Everything is constructed in code from the bootstrap. That is absolute, not a style preference — it is why the sim is testable without a scene, why determinism holds without a second place for state to hide, and why there is no prefab to drift out of sync with the JSON that is the actual source of truth.
+
+Shell *presentation* carries the one exception to that rule (§22, 2026-08-25). A screen may be authored as a prefab under `Resources/Shell/<AppScreen>.prefab`, with `ScreenLayout` anchors placed visually in the editor instead of as hardcoded literals in `ShellView`. Any anchor left unassigned — including every anchor, when no prefab exists at all — falls back to the code position, so "no prefab yet" and "prefab with a gap" are the same ordinary path, not a special case. This costs something real: prefab YAML merges badly across branches, and menu layout stops being reviewable in a diff the way everything else in this project is. That cost is accepted for eight items and a grid; it is not a precedent for pulling anything else out of code. If this ever looks like a mistake, the fix is discipline about who touches the prefab and when — not moving the shell back into code, which would just re-litigate the point of the carve-out.
+
 ### The menu shell
 
 Title, level select, pause and results draw with the game's own quads — there is no UI package. uGUI was already dropped alongside URP during the WebGL cut (§22, 2026-08-22), and these screens are eight items and a grid, not a form worth pulling a UI framework back in for. `BitmapFont` (`Assets/_Project/Scripts/Runtime/BitmapFont.cs`) is a 5×7 glyph table authored in code; `TextView` (`TextView.cs`) turns a string into one quad per lit pixel through `QuadView`, the same primitive every other piece of placeholder geometry uses.
+
+**The sim does not run behind the menus.** A level exists only while it is being played (§22, 2026-08-25). `SimBootstrap` builds just the camera and the shell at boot — no `SimDriver`, no world, no views. Choosing a level calls `SimBootstrap.StartLevel(id)`, which builds one `LevelSession` root holding the driver, the world it ticks and every view that reads it; quitting a level calls `EndLevel()`, which is a single `Destroy` on that root and nothing else to remember. Pause freezes the session in place — `ShellView` still owns `Bootstrap.Session` while paused — but there is no "hidden and frozen behind the title screen" state at any point: on the menus, `Session` is null, full stop. Every read through `Bootstrap.Session` in `ShellView` has to tolerate that null as the normal case, not an error, because it is what the screen looks like most of the time.
 
 **Every screen's rules live in a tested plain C# class; the view only draws.** `ScreenStack` and `LevelSelectModel`, both in `Assets/_Project/Scripts/Shell/` (its own assembly, `KeepyUppy.Shell` — an asmdef only covers its own folder tree, and a folder without one falls into `Assembly-CSharp`), decide which screen is current, what Back means, and where the level-select cursor can move. `ShellView.cs` is a MonoBehaviour with no automated tests, by design — it samples input, calls into the tested classes, and redraws text when their state changes. This is the same boundary the level editor already sits on.
 
@@ -192,7 +212,7 @@ If a test run hangs for more than about two minutes, stop it and tell me to clos
 
 ### The determinism test is load-bearing
 
-`docs/gdd.md` §6.1 is the rule most likely to regress silently, because breaking it produces no error, no warning, and no visible symptom until someone tries to learn a level.
+`docs/balloon-game-gdd.md` §6.1 is the rule most likely to regress silently, because breaking it produces no error, no warning, and no visible symptom until someone tries to learn a level.
 
 **Any change that adds state to the simulation must be covered by the replay-equality test in the same commit.** A new field on the balloon, a new hazard with internal state, a new zone type — if it isn't included in the two-run comparison, the test will keep passing while the guarantee quietly rots.
 
@@ -218,7 +238,7 @@ PlayMode tests and anything requiring rendering are also out of scope for this l
 
 - **Do not author level content past level 10** until the control-scheme experiment (GDD §5.3, open question #1) is settled. It changes every level.
 - **Do not do an art pass** before the same decision closes. Placeholder colour blocks only, on the final grid, with the reserved-colour rule enforced (GDD §13.1).
-- **When a LOCKED item changes**, add a dated row to `docs/gdd.md` §22 with the rationale in the same commit.
+- **When a LOCKED item changes**, add a dated row to `docs/balloon-game-gdd.md` §22 with the rationale in the same commit.
 - **When a WORKING value is tuned to something better**, update the table in the GDD. The tuning tables should reflect reality, not the original guess.
 - Tuning values live in serialised profiles under `Assets/StreamingAssets/levels/_tuning/`, **not** hardcoded in scripts. Everything in GDD §6.4 and §7.1 is a slider.
 - Prefer plain C# classes over MonoBehaviours for simulation logic. The sim should be testable without a scene.
