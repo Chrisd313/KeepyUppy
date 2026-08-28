@@ -257,6 +257,7 @@ namespace KeepyUppy.LevelEditing
                 Session.BeginEdit();
                 Session.DeleteTrigger(Session.SelectedTriggerId);
                 SyncDynamic();
+                _status = "deleted trigger";
             }
         }
 
@@ -484,7 +485,7 @@ namespace KeepyUppy.LevelEditing
             {
                 LevelTrigger selected = Session.FindTrigger(Session.SelectedTriggerId);
 
-                _triggerCorner = selected != null
+                _triggerCorner = selected?.rect != null
                     ? ZoneGeometry.HandleAt(ZoneGeometry.RectOf(selected.rect), world, ZoneHandleRadius)
                     : ZoneCorner.None;
 
