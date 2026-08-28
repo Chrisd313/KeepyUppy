@@ -285,6 +285,7 @@ Immediate-mode / debug UI only (Unity IMGUI, Godot Control nodes, or Dear ImGui)
 | `G` | Toggle grid overlay |
 | `H` | Toggle hitbox overlay (shows the asymmetric player-generous / hazard-stingy volumes) |
 | `T` | Toggle mobile safe-area overlay (thumb-occluded bottom corners) |
+| `I` | Flip the inspector to the other edge, to reach what it is covering |
 
 ---
 

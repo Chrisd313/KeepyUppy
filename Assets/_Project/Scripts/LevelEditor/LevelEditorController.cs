@@ -68,6 +68,17 @@ namespace KeepyUppy.LevelEditing
         bool _showHitboxes;
         bool _showSafeArea;
         bool _showBrowser;
+
+        /// <summary>
+        /// Draws the inspector against the left edge instead of the right.
+        ///
+        /// The room fills the screen, so the panel always covers part of it, and PointerOverUi
+        /// deliberately swallows clicks underneath it - otherwise a click on the panel would
+        /// also edit whatever it is sitting on top of. That makes anything behind the panel
+        /// unreachable, so the panel has to be movable. Flipping sides is the whole of it:
+        /// park it over the half of the room you are not working on.
+        /// </summary>
+        bool _inspectorOnLeft;
         Rect _browserRect;
         Vector2 _browserScroll;
         string _newLevelId = "w1_02";
@@ -203,6 +214,12 @@ namespace KeepyUppy.LevelEditing
             if (kb.hKey.wasPressedThisFrame) _showHitboxes = !_showHitboxes;
             if (kb.tKey.wasPressedThisFrame) _showSafeArea = !_showSafeArea;
             if (kb.lKey.wasPressedThisFrame) _showBrowser = !_showBrowser;
+
+            if (kb.iKey.wasPressedThisFrame)
+            {
+                _inspectorOnLeft = !_inspectorOnLeft;
+                _status = _inspectorOnLeft ? "inspector left" : "inspector right";
+            }
 
             if (kb.deleteKey.wasPressedThisFrame && Session.SelectedEntityId != null)
             {
@@ -775,6 +792,14 @@ namespace KeepyUppy.LevelEditing
         /// Built from EntityFields rather than hand-written per hazard, so a new entity type
         /// appears here with no UI code — the same reasoning as GDD 5.1's verb layer.
         /// </summary>
+        /// <summary>
+        /// Where the inspector sits, on whichever edge is currently out of the way. Every
+        /// inspector goes through this: they share one rect, and PointerOverUi reads it to
+        /// keep a click on the panel from reaching the room behind it.
+        /// </summary>
+        Rect InspectorRect(float height)
+            => new Rect(_inspectorOnLeft ? 8f : Screen.width - 252f, 60f, 244f, height);
+
         void DrawInspector()
         {
             // Before the exit and entity branches: the zone tool has its own selection, and
@@ -792,7 +817,7 @@ namespace KeepyUppy.LevelEditing
             // pos comes from a file that a human may have edited; do not trust its length.
             if (entity?.pos == null || entity.pos.Length < 2) { _inspectorRect = Rect.zero; return; }
 
-            _inspectorRect = new Rect(Screen.width - 252f, 60f, 244f, 400f);
+            _inspectorRect = InspectorRect(400f);
             GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
 
             GUILayout.Label($"{entity.id}   {entity.type}");
@@ -850,7 +875,7 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         void DrawZoneInspector()
         {
-            _inspectorRect = new Rect(Screen.width - 252f, 60f, 244f, 320f);
+            _inspectorRect = InspectorRect(320f);
             GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
 
             bool changed = ZoneInspector.Draw(Session, _fieldText);
@@ -870,7 +895,7 @@ namespace KeepyUppy.LevelEditing
             LevelExit exit = Session.Level.exit;
             if (exit?.pos == null || exit.pos.Length < 2) { _inspectorRect = Rect.zero; return; }
 
-            _inspectorRect = new Rect(Screen.width - 252f, 60f, 244f, 200f);
+            _inspectorRect = InspectorRect(200f);
             GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
 
             GUILayout.Label("exit");
