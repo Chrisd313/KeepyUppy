@@ -33,12 +33,23 @@ namespace KeepyUppy.Shell.Save
         public readonly bool NewBestTouches;
         public readonly bool NewBestTime;
 
-        public SaveResult(SaveData data, LevelRecord record, bool newBestTouches, bool newBestTime)
+        /// <summary>
+        /// This run's own medal — <c>Grade(run.Touches, run.ParTouches)</c> — regardless of
+        /// whether it beat the stored best. <see cref="LevelRecord.medal"/> keeps following
+        /// bestTouches, as designed; this is what Results draws instead, so a slow re-clear
+        /// after a fast gold run reads as its own bronze rather than borrowing the record's
+        /// gold.
+        /// </summary>
+        public readonly Medal RunMedal;
+
+        public SaveResult(SaveData data, LevelRecord record, bool newBestTouches, bool newBestTime,
+                          Medal runMedal)
         {
             Data = data;
             Record = record;
             NewBestTouches = newBestTouches;
             NewBestTime = newBestTime;
+            RunMedal = runMedal;
         }
     }
 
@@ -135,7 +146,8 @@ namespace KeepyUppy.Shell.Save
             levels.Add(updated);
             next.levels = levels.ToArray();
 
-            return new SaveResult(next, updated, newBestTouches, newBestTime);
+            Medal runMedal = Grade(run.Touches, run.ParTouches);
+            return new SaveResult(next, updated, newBestTouches, newBestTime, runMedal);
         }
 
         static int Min(int a, int b) => a < b ? a : b;

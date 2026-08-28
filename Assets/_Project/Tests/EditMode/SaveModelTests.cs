@@ -72,6 +72,17 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void AFirstClearsRunMedalAgreesWithTheRecordMedal()
+        {
+            // There is nothing to beat yet, so the run IS the record - the two gradings can
+            // only agree here.
+            SaveResult result = SaveModel.Merge(Empty(), new RunResult("w1_01", 9, 600, 7));
+
+            Assert.AreEqual(Medal.Silver, result.RunMedal);
+            Assert.AreEqual((int)result.RunMedal, result.Record.medal);
+        }
+
+        [Test]
         public void FewerTouchesBeatsTheRecordAndRegradesTheMedal()
         {
             SaveData data = SaveModel.Merge(Empty(), new RunResult("w1_01", 9, 600, 7)).Data;
@@ -83,6 +94,22 @@ namespace KeepyUppy.SimTests
             Assert.IsTrue(result.NewBestTouches);
             Assert.IsFalse(result.NewBestTime, "a slower run does not set a time record");
             Assert.AreEqual(600, result.Record.bestTimeFrames, "and does not overwrite one");
+        }
+
+        [Test]
+        public void AWorseRunReportsItsOwnMedalWhileTheRecordKeepsTheBest()
+        {
+            // A par-7 room cleared gold at 5 touches, then cleared again at 20 (bronze). The
+            // record must keep remembering gold - that is the whole point of bestTouches - but
+            // the RESULTS SCREEN for this run must show what this run actually earned, or the
+            // player reads an award for a run that did not earn it (the bug this field fixes).
+            SaveData data = SaveModel.Merge(Empty(), new RunResult("w1_01", 5, 600, 7)).Data;
+
+            SaveResult result = SaveModel.Merge(data, new RunResult("w1_01", 20, 900, 7));
+
+            Assert.AreEqual(Medal.Bronze, result.RunMedal, "this run's own grade");
+            Assert.AreEqual((int)Medal.Gold, result.Record.medal, "the record still remembers the best");
+            Assert.IsFalse(result.NewBestTouches);
         }
 
         [Test]

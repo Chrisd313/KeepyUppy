@@ -166,6 +166,9 @@ level select and the Results screen.
   `Clock` resets every attempt, so deaths cost nothing but the attempt.
 - Death counts are still per-session and deliberately not persisted.
 - A `LEVEL_EDITOR`-only wipe: hold `Backspace` on the level select for about a second.
+- Winning inside a `LEVEL_EDITOR` editing session records a clear into the real save just like
+  any other win, geometry just drawn included — it goes through the same win edge and the same
+  `RecordClear` call. The wipe above is the escape hatch for whatever that leaves behind.
 
 The design and its rejected alternatives are in
 `docs/superpowers/specs/2026-08-27-progression-save-data-design.md`.

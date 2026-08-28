@@ -45,7 +45,11 @@ namespace KeepyUppy.Runtime
 
         // The run that put us on Results, kept only until Results is left. Null everywhere
         // else, including on a Results screen redrawn after the session was destroyed.
+        // Kept alongside the RunResult that produced it so DrawResults reads touches/frames
+        // from the captured run rather than from Bootstrap.Session, which can already be gone
+        // by the time it redraws - see DrawResults' comment.
         SaveResult? _lastRun;
+        RunResult? _lastRunInput;
         int _drawnSaveGeneration = -1;
 
         // Set by OnScreenChanged whenever the screen changes mid-Update (only ObserveWin can
@@ -231,11 +235,13 @@ namespace KeepyUppy.Runtime
             if (session == null || Bootstrap.Save == null) return;
 
             int par = session.Level?.meta?.par_touches ?? 0;
-            _lastRun = Bootstrap.Save.RecordClear(new RunResult(
+            var run = new RunResult(
                 session.LevelId,
                 driver.World.WinningTouches,
                 driver.World.WinningFrames,
-                par));
+                par);
+            _lastRunInput = run;
+            _lastRun = Bootstrap.Save.RecordClear(run);
         }
 
         /// <summary>
@@ -255,7 +261,19 @@ namespace KeepyUppy.Runtime
             // The run belongs to the Results screen it was recorded for. Leaving it - to the
             // next level, a retry, or the level select - must not leave a stale BEST! on the
             // next room's results.
-            if (from == AppScreen.Results) _lastRun = null;
+            if (from == AppScreen.Results)
+            {
+                _lastRun = null;
+                _lastRunInput = null;
+            }
+
+#if LEVEL_EDITOR
+            // HandleWipeHold is only ever called for LevelSelect, so nothing else drives this
+            // counter back to zero. Without this, holding Backspace short of the threshold,
+            // leaving, coming back and holding again accumulates across visits instead of
+            // resetting - a hold that should have done nothing eventually wipes the save.
+            if (from == AppScreen.LevelSelect) _wipeHeldFrames = 0;
+#endif
 
             if (to != AppScreen.Results) return;
 
@@ -498,12 +516,14 @@ namespace KeepyUppy.Runtime
             TextView.Draw(parent, "ROOM CLEARED", Anchor(layout, 0, new Vector2(8f, 13f)), SimPalette.Text, scale: 2);
 
             // Results is only reached via the win edge, which only fires with a session
-            // running (see Update) - but Session can still vanish between the edge and this
-            // redraw, so read the run defensively rather than assuming it survives.
-            int touches = Bootstrap?.Session?.Driver.World.WinningTouches ?? 0;
-            int frames = Bootstrap?.Session?.Driver.World.WinningFrames ?? 0;
+            // running (see Update) - but Session can vanish between the edge and this redraw.
+            // Read touches, frames and the medal from the captured run rather than the live
+            // session, so the whole line is internally consistent and degrades to nothing -
+            // not to a wrong number paired with a stale medal - if the session is gone.
+            int touches = _lastRunInput?.Touches ?? 0;
+            int frames = _lastRunInput?.TimeFrames ?? 0;
 
-            string medal = _lastRun.HasValue ? MedalLabel((Medal)_lastRun.Value.Record.medal) : "";
+            string medal = _lastRun.HasValue ? MedalLabel(_lastRun.Value.RunMedal) : "";
             string touchLine = $"{touches} TOUCHES{medal}";
             if (_lastRun.HasValue && _lastRun.Value.NewBestTouches) touchLine += " BEST!";
             TextView.Draw(parent, touchLine, Anchor(layout, 1, new Vector2(9f, 10f)), SimPalette.TextDim);
