@@ -259,5 +259,97 @@ namespace KeepyUppy.SimTests
 
             Assert.AreEqual(TileKind.SpikeDown, world.Grid[12, 7]);
         }
+
+        [Test]
+        public void AddZone_CreatesAnAirZoneAndSelectsIt()
+        {
+            var session = new EditorSession();
+
+            LevelZone zone = session.AddZone(new Rect(20f, 1f, 6f, 10f));
+
+            Assert.AreEqual("z01", zone.id);
+            Assert.AreEqual("air", zone.type);
+            Assert.AreEqual("on", zone.start_state);
+            Assert.AreEqual(new[] { 20f, 1f, 6f, 10f }, zone.rect);
+            Assert.AreEqual("z01", session.SelectedZoneId);
+            Assert.AreEqual(1, session.Level.zones.Length);
+            Assert.IsTrue(session.Dirty);
+        }
+
+        [Test]
+        public void ZoneIds_ReuseTheLowestFreeSlotAfterADeletion()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 2f, 2f));
+            session.AddZone(new Rect(4f, 0f, 2f, 2f));
+            session.AddZone(new Rect(8f, 0f, 2f, 2f));
+
+            Assert.IsTrue(session.DeleteZone("z02"));
+
+            Assert.AreEqual("z02", session.AddZone(new Rect(12f, 0f, 2f, 2f)).id);
+        }
+
+        [Test]
+        public void ZoneAt_PicksTheSmallestZoneContainingThePoint()
+        {
+            // A small vent drawn inside a room-wide thermal must stay reachable.
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 30f, 16f));           // z01, the thermal
+            LevelZone vent = session.AddZone(new Rect(10f, 4f, 2f, 2f));   // z02, inside it
+
+            Assert.AreEqual(vent.id, session.ZoneAt(new Vector2(11f, 5f)).id);
+            Assert.AreEqual("z01", session.ZoneAt(new Vector2(25f, 14f)).id);
+            Assert.IsNull(session.ZoneAt(new Vector2(31.5f, 17.5f)));
+        }
+
+        [Test]
+        public void ZoneAt_IgnoresAZoneWithAMalformedRect()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 4f, 4f));
+            session.Level.zones[0].rect = new[] { 1f, 2f };   // hand-edited badly
+
+            Assert.IsNull(session.ZoneAt(new Vector2(2f, 2f)));
+        }
+
+        [Test]
+        public void SetZoneRect_WritesBackThroughTheSchemaArray()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 4f, 4f));
+
+            session.SetZoneRect("z01", new Rect(6f, 2f, 3f, 5f));
+
+            Assert.AreEqual(new[] { 6f, 2f, 3f, 5f }, session.FindZone("z01").rect);
+        }
+
+        [Test]
+        public void DeleteZone_ClearsTheSelectionOnlyForTheDeletedZone()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 4f, 4f));
+            LevelZone second = session.AddZone(new Rect(8f, 0f, 4f, 4f));
+
+            Assert.IsTrue(session.DeleteZone("z01"));
+            Assert.AreEqual(second.id, session.SelectedZoneId, "deleting another zone must not clear the selection");
+
+            Assert.IsTrue(session.DeleteZone(second.id));
+            Assert.IsNull(session.SelectedZoneId);
+
+            Assert.IsFalse(session.DeleteZone("z99"), "deleting a missing zone reports failure");
+        }
+
+        [Test]
+        public void ZoneEdits_SurviveAnUndoRoundTrip()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(20f, 1f, 6f, 10f));
+
+            session.BeginEdit();
+            session.SetZoneRect("z01", new Rect(2f, 2f, 2f, 2f));
+
+            Assert.IsTrue(session.UndoEdit());
+            Assert.AreEqual(new[] { 20f, 1f, 6f, 10f }, session.FindZone("z01").rect);
+        }
     }
 }
