@@ -988,6 +988,7 @@ namespace KeepyUppy.LevelEditing
         {
             if (_showGrid) DrawGrid();
             if (_showSafeArea) DrawSafeArea();
+            DrawZones();
             if (_showHitboxes) DrawHitboxes();
             DrawEntities();
         }
@@ -1151,6 +1152,69 @@ namespace KeepyUppy.LevelEditing
             Vector3 screen = Host.Camera.WorldToScreenPoint(world);
             return new Vector2(screen.x, Screen.height - screen.y);
         }
+
+        /// <summary>Handle hit radius in world units — about 4 px at 20 px/metre.</summary>
+        const float ZoneHandleRadius = 0.35f;
+
+        /// <summary>
+        /// Every zone in the level, whatever its type.
+        ///
+        /// Drawn from Session.Level.zones rather than from the world's AirField, because
+        /// LevelLoader.LoadZones admits only type "air" — the five inert types never reach
+        /// the field, so a view reading it could never show them, and a zone that cannot be
+        /// seen cannot be selected or edited. ZoneViewSync still draws the air zones in play;
+        /// this is the authoring view.
+        /// </summary>
+        void DrawZones()
+        {
+            if (Session.Level.zones == null) return;
+
+            foreach (LevelZone zone in Session.Level.zones)
+            {
+                if (zone?.rect == null || zone.rect.Length < 4) continue;
+
+                Rect rect = ZoneGeometry.RectOf(zone.rect);
+                bool selected = zone.id == Session.SelectedZoneId;
+                bool off = zone.start_state == "off";
+
+                // An off zone is dimmed rather than hidden: hiding it would make it
+                // impossible to select, and so impossible to switch back on.
+                Color fill = ZoneFill(zone.type);
+                if (off) fill.a *= 0.4f;
+
+                DrawWorldRect(rect, fill);
+
+                if (!selected) continue;
+
+                Color edge = new Color(1f, 1f, 1f, 0.8f);
+                DrawWorldRect(new Rect(rect.xMin, rect.yMax - 0.05f, rect.width, 0.05f), edge);
+                DrawWorldRect(new Rect(rect.xMin, rect.yMin, rect.width, 0.05f), edge);
+                DrawWorldRect(new Rect(rect.xMin, rect.yMin, 0.05f, rect.height), edge);
+                DrawWorldRect(new Rect(rect.xMax - 0.05f, rect.yMin, 0.05f, rect.height), edge);
+
+                DrawHandle(new Vector2(rect.xMin, rect.yMin));
+                DrawHandle(new Vector2(rect.xMax, rect.yMin));
+                DrawHandle(new Vector2(rect.xMin, rect.yMax));
+                DrawHandle(new Vector2(rect.xMax, rect.yMax));
+            }
+        }
+
+        void DrawHandle(Vector2 corner)
+        {
+            const float r = ZoneHandleRadius;
+            DrawWorldRect(new Rect(corner.x - r * 0.5f, corner.y - r * 0.5f, r, r),
+                          new Color(1f, 1f, 1f, 0.9f));
+        }
+
+        /// <summary>
+        /// Air borrows the fan's blue, so wind looks like wind wherever it comes from. The
+        /// inert types get a flat grey: they do nothing, and dressing them in a colour that
+        /// suggests they do would be a lie. Never the reserved hazard hue (GDD 13.1).
+        /// </summary>
+        static Color ZoneFill(string type)
+            => type == "air"
+                ? new Color(0.45f, 0.65f, 0.75f, 0.30f)
+                : new Color(0.55f, 0.55f, 0.60f, 0.22f);
 
         void DrawWorldRect(Rect worldRect, Color colour)
         {
