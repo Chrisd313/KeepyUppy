@@ -169,7 +169,7 @@ namespace KeepyUppy.LevelEditing
             {
                 Session.BeginEdit();
                 Session.DeleteEntity(Session.SelectedEntityId);
-                SyncEntities();
+                SyncDynamic();
                 _status = "deleted entity";
             }
         }
@@ -274,7 +274,7 @@ namespace KeepyUppy.LevelEditing
             if (Session.SelectedEntityId == null) return;
 
             Session.MoveEntity(Session.SelectedEntityId, world + _entityDragOffset);
-            SyncEntities();
+            SyncDynamic();
         }
 
         /// <summary>
@@ -287,7 +287,7 @@ namespace KeepyUppy.LevelEditing
 
             Session.BeginEdit();
             LevelEntity placed = Session.PlaceEntity(_entityType, world);
-            SyncEntities();
+            SyncDynamic();
             _status = $"placed {placed.type} {placed.id}";
         }
 
@@ -321,7 +321,7 @@ namespace KeepyUppy.LevelEditing
                 {
                     Session.BeginEdit();
                     Session.DeleteWaypoint(id, index);
-                    SyncEntities();
+                    SyncDynamic();
                     _status = "removed waypoint";
                 }
                 return;
@@ -339,7 +339,7 @@ namespace KeepyUppy.LevelEditing
                     _status = "added waypoint";
                 }
 
-                SyncEntities();
+                SyncDynamic();
             }
 
             if (mouse.leftButton.wasReleasedThisFrame) _draggingWaypoint = -1;
@@ -347,7 +347,7 @@ namespace KeepyUppy.LevelEditing
             if (_draggingWaypoint >= 0 && mouse.leftButton.isPressed)
             {
                 Session.MoveWaypoint(id, _draggingWaypoint, world);
-                SyncEntities();
+                SyncDynamic();
             }
         }
 
@@ -355,7 +355,7 @@ namespace KeepyUppy.LevelEditing
         /// Pushes entity and zone edits into the running world so they are visible at once.
         /// Geometry, spawns and the paused run are left alone — this is not a reload.
         /// </summary>
-        void SyncEntities() => Host.SyncEntities(Session.Level);
+        void SyncDynamic() => Host.SyncDynamic(Session.Level);
 
         /// <summary>The gate lives on the world, not the entity list, so it syncs its own way.</summary>
         void SyncExit() => Host.SyncExit(Session.Level);
@@ -413,7 +413,7 @@ namespace KeepyUppy.LevelEditing
         {
             if (!Session.UndoEdit()) return false;
 
-            SyncEntities();
+            SyncDynamic();
             return true;
         }
 
@@ -421,7 +421,7 @@ namespace KeepyUppy.LevelEditing
         {
             if (!Session.RedoEdit()) return false;
 
-            SyncEntities();
+            SyncDynamic();
             return true;
         }
 
@@ -615,7 +615,7 @@ namespace KeepyUppy.LevelEditing
             {
                 Session.BeginEdit();
                 Session.PlaceEntity(_entityType, new Vector2(TileGrid.Width * 0.5f, TileGrid.Height * 0.5f));
-                SyncEntities();
+                SyncDynamic();
                 _status = $"placed {_entityType}";
             }
             GUILayout.EndHorizontal();
@@ -655,7 +655,7 @@ namespace KeepyUppy.LevelEditing
             {
                 Session.BeginEdit();
                 Session.MoveEntity(entity.id, new Vector2(x, y));
-                SyncEntities();
+                SyncDynamic();
             }
 
             EntityParamId[] fields = EntityFields.For(entity.type);
@@ -675,7 +675,7 @@ namespace KeepyUppy.LevelEditing
 
                 Session.BeginEdit();
                 Session.SetParam(entity.id, id, typed);
-                SyncEntities();
+                SyncDynamic();
             }
 
             GUILayout.Space(4f);
@@ -779,7 +779,7 @@ namespace KeepyUppy.LevelEditing
 
             Session.BeginEdit();
             Session.SetEntityType(entity.id, types[index]);
-            SyncEntities();
+            SyncDynamic();
             _status = $"{entity.id} is now a {types[index]}";
         }
 
@@ -797,14 +797,14 @@ namespace KeepyUppy.LevelEditing
                                                      % EntityFields.PathModes.Length];
                 Session.BeginEdit();
                 Session.SetPathMode(entity.id, next);
-                SyncEntities();
+                SyncDynamic();
             }
 
             if (count > 0 && GUILayout.Button("clear", GUILayout.Width(50f)))
             {
                 Session.BeginEdit();
                 for (int i = count; i > 0; i--) Session.DeleteWaypoint(entity.id, i);
-                SyncEntities();
+                SyncDynamic();
                 _status = "cleared path";
             }
 
@@ -818,7 +818,7 @@ namespace KeepyUppy.LevelEditing
 
             Session.BeginEdit();
             Session.SetPhase(entity.id, phase);
-            SyncEntities();
+            SyncDynamic();
         }
 
         void DrawStateRow(LevelEntity entity)
@@ -831,14 +831,14 @@ namespace KeepyUppy.LevelEditing
                 string next = entity.start_state == "dormant" ? "active" : "dormant";
                 Session.BeginEdit();
                 Session.SetStartState(entity.id, next);
-                SyncEntities();
+                SyncDynamic();
             }
 
             if (GUILayout.Button("delete", GUILayout.Width(60f)))
             {
                 Session.BeginEdit();
                 Session.DeleteEntity(entity.id);
-                SyncEntities();
+                SyncDynamic();
                 _status = "deleted entity";
             }
 
