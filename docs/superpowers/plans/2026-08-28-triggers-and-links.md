@@ -90,8 +90,8 @@ Add to `LevelFormatTests.cs`. `FullLevel()` already builds a level using every p
                 },
             };
 
-            _source.Save(level);
-            LevelData loaded = _source.Load(level.id);
+            _source.Save(level.id, level);
+            Assert.IsTrue(_source.TryLoad(level.id, out LevelData loaded));
 
             Assert.IsTrue(loaded.triggers[0].visible, "visible must round-trip");
             Assert.IsFalse(loaded.triggers[1].visible);
@@ -759,10 +759,12 @@ Append to `TriggerFieldTests.cs` (inside the class), and add `using KeepyUppy.Si
 
             field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
 
-            for (int step = 1; step <= 24; step++)
+            // Fired on step 0, so it is queued for step 0 + 1 + 24 = 25. The +1 is the
+            // "effects land on the next step" rule, not an off-by-one.
+            for (int step = 1; step <= 26; step++)
             {
                 field.Step(step, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
-                bool expected = step >= 24;
+                bool expected = step >= 25;
                 Assert.AreEqual(expected, entities.Find("e01").Active, $"step {step}");
             }
         }
@@ -1640,7 +1642,10 @@ first and do not duplicate them.
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `LevelValidatorTests.cs` (match the file's existing helper for building a valid level; if it has none, build one inline as `TriggerLoadTests` does):
+Add to `LevelValidatorTests.cs`. The file already has `static LevelData Valid()` (a lint-clean
+level) and `static void AssertWarns(LevelData level, string fragment)` — use both rather than
+adding new helpers. `Mentions` is the one addition, for the tests that assert the ABSENCE of a
+warning:
 
 ```csharp
         static bool Mentions(System.Collections.Generic.List<string> warnings, string fragment)
@@ -1654,7 +1659,7 @@ Add to `LevelValidatorTests.cs` (match the file's existing helper for building a
         [Test]
         public void Timer_WithNoSeconds_IsAnError()
         {
-            LevelData level = ValidLevel();
+            LevelData level = Valid();
             level.triggers = new[] { new LevelTrigger { id = "t01", type = "timer", seconds = 0f } };
 
             Assert.IsTrue(Mentions(LevelValidator.Validate(level), "timer"));
@@ -1663,7 +1668,7 @@ Add to `LevelValidatorTests.cs` (match the file's existing helper for building a
         [Test]
         public void Region_WithAZeroAreaRect_IsAnError()
         {
-            LevelData level = ValidLevel();
+            LevelData level = Valid();
             level.triggers = new[]
             {
                 new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 4f, 4f, 0f, 3f } },
@@ -1675,7 +1680,7 @@ Add to `LevelValidatorTests.cs` (match the file's existing helper for building a
         [Test]
         public void Trigger_NothingLinksFrom_IsWarned()
         {
-            LevelData level = ValidLevel();
+            LevelData level = Valid();
             level.triggers = new[]
             {
                 new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 4f, 4f, 2f, 2f } },
@@ -1688,7 +1693,7 @@ Add to `LevelValidatorTests.cs` (match the file's existing helper for building a
         [Test]
         public void TwoOnceTriggers_WithIdenticalRects_AreWarned()
         {
-            LevelData level = ValidLevel();
+            LevelData level = Valid();
             level.triggers = new[]
             {
                 new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 4f, 4f, 2f, 2f }, once = true },
@@ -1701,7 +1706,7 @@ Add to `LevelValidatorTests.cs` (match the file's existing helper for building a
         [Test]
         public void InertTypesAndActions_AreCalledOut()
         {
-            LevelData level = ValidLevel();
+            LevelData level = Valid();
             level.triggers = new[]
             {
                 new LevelTrigger { id = "t01", type = "lever", rect = new[] { 4f, 4f, 2f, 2f } },
@@ -1720,7 +1725,7 @@ Add to `LevelValidatorTests.cs` (match the file's existing helper for building a
         [Test]
         public void AWellFormedTrap_ProducesNoTriggerWarnings()
         {
-            LevelData level = ValidLevel();
+            LevelData level = Valid();
             level.entities = new[]
             {
                 new LevelEntity { id = "e01", type = "spike_bar", pos = new[] { 14f, 1f }, start_state = "dormant" },
@@ -1740,8 +1745,6 @@ Add to `LevelValidatorTests.cs` (match the file's existing helper for building a
             Assert.IsFalse(Mentions(warnings, "link"), string.Join(" | ", warnings));
         }
 ```
-
-If `LevelValidatorTests.cs` has no `ValidLevel()` helper, add one that returns a level passing every existing lint (bordered grid, spawns clear of geometry, a reachable exit, `meta.par_touches = 7`) — copy the shape from `LevelFormatTests.FullLevel()`.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
