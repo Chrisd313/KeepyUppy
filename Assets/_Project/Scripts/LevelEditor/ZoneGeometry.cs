@@ -69,18 +69,6 @@ namespace KeepyUppy.LevelEditing
         }
 
         /// <summary>
-        /// Drags one corner to a new position, pinning the opposite one. Dragged past the far
-        /// edge the rect flips rather than inverting, because the result is re-normalised
-        /// between the two tiles rather than being computed as a width.
-        /// </summary>
-        public static Rect Resize(Rect rect, ZoneCorner corner, Vector2 world)
-        {
-            if (corner == ZoneCorner.None) return rect;
-
-            return Normalise(AnchorOf(rect, corner), GridCursor.ToTile(world));
-        }
-
-        /// <summary>
         /// The tile diagonally opposite a corner — the one a resize pivots around. Tile
         /// coordinates, not rect edges: a rect of x 10 width 6 covers tiles 10..15, so its far
         /// tile is 15 and not 16.
@@ -116,6 +104,24 @@ namespace KeepyUppy.LevelEditing
 
             int x = Mathf.Clamp(Mathf.RoundToInt(bottomLeft.x), 0, TileGrid.Width - w);
             int y = Mathf.Clamp(Mathf.RoundToInt(bottomLeft.y), 0, TileGrid.Height - h);
+
+            return new Rect(x, y, w, h);
+        }
+
+        /// <summary>
+        /// Forces a rect onto the tile grid and inside the room, for values arriving from
+        /// somewhere other than a drag — typed inspector fields, or hand-edited JSON.
+        ///
+        /// The drag paths get this for free from GridCursor.TileRect; typed input has to be
+        /// held to the same invariant or the two halves of the tool disagree about what a
+        /// zone is.
+        /// </summary>
+        public static Rect Snap(Rect rect)
+        {
+            int w = Mathf.Clamp(Mathf.RoundToInt(rect.width), 1, TileGrid.Width);
+            int h = Mathf.Clamp(Mathf.RoundToInt(rect.height), 1, TileGrid.Height);
+            int x = Mathf.Clamp(Mathf.RoundToInt(rect.xMin), 0, TileGrid.Width - w);
+            int y = Mathf.Clamp(Mathf.RoundToInt(rect.yMin), 0, TileGrid.Height - h);
 
             return new Rect(x, y, w, h);
         }

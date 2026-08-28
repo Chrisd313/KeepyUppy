@@ -296,7 +296,7 @@ namespace KeepyUppy.LevelEditing
             var entities = new List<LevelEntity>(Level.entities ?? new LevelEntity[0]) { entity };
             Level.entities = entities.ToArray();
 
-            SelectedEntityId = entity.id;
+            SelectEntity(entity.id);
             Dirty = true;
             return entity;
         }
@@ -389,15 +389,30 @@ namespace KeepyUppy.LevelEditing
         }
 
         /// <summary>
-        /// Selects a zone, clearing the exit selection.
+        /// Selects a zone, clearing the entity and exit selections.
         ///
-        /// The three selections are mutually exclusive because the inspector dispatches on
-        /// them in order: leaving a stale one set makes a later branch unreachable, and the
-        /// author sees the wrong panel with no way to get the right one back.
+        /// The three are mutually exclusive because more than the inspector reads them: the
+        /// Delete key tests each independently, so two live selections means one keypress
+        /// destroying two objects.
         /// </summary>
         public void SelectZone(string id)
         {
             SelectedZoneId = id;
+            SelectedEntityId = null;
+            ExitSelected = false;
+        }
+
+        /// <summary>
+        /// Selects an entity, clearing the zone and exit selections.
+        ///
+        /// The three are mutually exclusive because more than the inspector reads them: the
+        /// Delete key tests each independently, so two live selections means one keypress
+        /// destroying two objects.
+        /// </summary>
+        public void SelectEntity(string id)
+        {
+            SelectedEntityId = id;
+            SelectedZoneId = null;
             ExitSelected = false;
         }
 
@@ -411,6 +426,41 @@ namespace KeepyUppy.LevelEditing
             if (zone == null) return;
 
             zone.rect = ZoneGeometry.ToArray(rect);
+            Dirty = true;
+        }
+
+        public void SetZoneType(string id, string type)
+        {
+            LevelZone zone = FindZone(id);
+            if (zone == null || zone.type == type) return;
+
+            zone.type = type;
+            Dirty = true;
+        }
+
+        public void SetZoneParams(string id, float vx, float vy, float rate)
+        {
+            LevelZone zone = FindZone(id);
+            if (zone == null) return;
+
+            if (zone.@params == null) zone.@params = new ZoneParams();
+
+            zone.@params.vx = vx;
+            zone.@params.vy = vy;
+            zone.@params.rate = rate;
+            Dirty = true;
+        }
+
+        /// <summary>The schema stores this as the string "on" / "off" (level-editor-spec 3).</summary>
+        public void SetZoneEnabled(string id, bool enabled)
+        {
+            LevelZone zone = FindZone(id);
+            if (zone == null) return;
+
+            string state = enabled ? "on" : "off";
+            if (zone.start_state == state) return;
+
+            zone.start_state = state;
             Dirty = true;
         }
 

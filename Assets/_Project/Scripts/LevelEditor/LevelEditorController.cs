@@ -156,7 +156,9 @@ namespace KeepyUppy.LevelEditing
 
             if (Session.Mode == EditorMode.Play) return;
 
-            string selection = Session.ExitSelected ? "@exit" : Session.SelectedEntityId;
+            string selection = Session.ExitSelected
+                ? "@exit"
+                : Session.SelectedZoneId ?? Session.SelectedEntityId;
             if (selection != _lastSelected)
             {
                 _lastSelected = selection;
@@ -285,8 +287,7 @@ namespace KeepyUppy.LevelEditing
                 LevelEntity hit = Session.EntityAt(world);
                 if (hit != null)
                 {
-                    Session.SelectedEntityId = hit.id;
-                    Session.ExitSelected = false;
+                    Session.SelectEntity(hit.id);
                     _entityDragOffset = new Vector2(hit.pos[0], hit.pos[1]) - world;
                     Session.BeginEdit();
                     _dragging = true;
@@ -302,8 +303,7 @@ namespace KeepyUppy.LevelEditing
                 }
                 else
                 {
-                    Session.SelectedEntityId = null;
-                    Session.ExitSelected = false;
+                    Session.SelectEntity(null);
                 }
             }
 
@@ -451,7 +451,7 @@ namespace KeepyUppy.LevelEditing
                 if (mouse.leftButton.wasPressedThisFrame)
                 {
                     LevelEntity hit = Session.EntityAt(world);
-                    Session.SelectedEntityId = hit?.id;
+                    Session.SelectEntity(hit?.id);
                     _status = hit == null ? "select an entity to give it a path" : $"editing {hit.id} path";
                 }
                 return;

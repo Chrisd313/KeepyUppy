@@ -391,5 +391,72 @@ namespace KeepyUppy.SimTests
             Assert.IsNull(session.SelectedZoneId);
             Assert.IsTrue(session.ExitSelected);
         }
+
+        [Test]
+        public void InspectorSetters_MarkTheSessionDirty()
+        {
+            // Dirty is what makes the editor auto-save on the way out. An edit that does not
+            // set it is an edit the author loses without being told.
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+            session.MarkSaved();
+
+            session.SetZoneType("z01", "heat");
+            Assert.IsTrue(session.Dirty, "type");
+
+            session.MarkSaved();
+            session.SetZoneParams("z01", 1f, 2f, 3f);
+            Assert.IsTrue(session.Dirty, "params");
+
+            session.MarkSaved();
+            session.SetZoneEnabled("z01", false);
+            Assert.IsTrue(session.Dirty, "start_state");
+        }
+
+        [Test]
+        public void SetZoneEnabled_WritesTheSchemaStrings()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+
+            session.SetZoneEnabled("z01", false);
+            Assert.AreEqual("off", session.FindZone("z01").start_state);
+
+            session.SetZoneEnabled("z01", true);
+            Assert.AreEqual("on", session.FindZone("z01").start_state);
+        }
+
+        [Test]
+        public void SetZoneParams_SurvivesANullParamsBlock()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+            session.FindZone("z01").@params = null;   // hand-edited JSON
+
+            session.SetZoneParams("z01", 1.5f, 4.5f, 0f);
+
+            Assert.AreEqual(4.5f, session.FindZone("z01").@params.vy, 1e-5f);
+        }
+
+        [Test]
+        public void TheThreeSelectionsAreMutuallyExclusive()
+        {
+            // More than the inspector reads these: the Delete key tests each independently, so
+            // two live selections means one keypress destroying two objects.
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+
+            session.SelectEntity("e01");
+            Assert.IsNull(session.SelectedZoneId);
+            Assert.IsFalse(session.ExitSelected);
+
+            session.SelectZone("z01");
+            Assert.IsNull(session.SelectedEntityId);
+            Assert.IsFalse(session.ExitSelected);
+
+            session.SelectExit();
+            Assert.IsNull(session.SelectedEntityId);
+            Assert.IsNull(session.SelectedZoneId);
+        }
     }
 }

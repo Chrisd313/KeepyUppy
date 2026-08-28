@@ -39,7 +39,8 @@ namespace KeepyUppy.LevelEditing
                 bool active = zone.type == type;
                 if (GUILayout.Toggle(active, type, "Button", GUILayout.Width(52f)) == active) continue;
 
-                zone.type = type;
+                session.BeginEdit();
+                session.SetZoneType(zone.id, type);
                 changed = true;
             }
 
@@ -57,10 +58,11 @@ namespace KeepyUppy.LevelEditing
             float w = Row("w", $"{zone.id}.w", rect.width, fieldText);
             float h = Row("h", $"{zone.id}.h", rect.height, fieldText);
 
-            var typed = new Rect(x, y, Mathf.Max(w, 1f), Mathf.Max(h, 1f));
+            var typed = ZoneGeometry.Snap(new Rect(x, y, Mathf.Max(w, 1f), Mathf.Max(h, 1f)));
             if (typed != rect)
             {
-                zone.rect = ZoneGeometry.ToArray(typed);
+                session.BeginEdit();
+                session.SetZoneRect(zone.id, typed);
                 changed = true;
             }
 
@@ -71,20 +73,30 @@ namespace KeepyUppy.LevelEditing
                 float vx = Row("vx", $"{zone.id}.vx", zone.@params.vx, fieldText);
                 float vy = Row("vy", $"{zone.id}.vy", zone.@params.vy, fieldText);
 
-                if (!Mathf.Approximately(vx, zone.@params.vx)) { zone.@params.vx = vx; changed = true; }
-                if (!Mathf.Approximately(vy, zone.@params.vy)) { zone.@params.vy = vy; changed = true; }
+                if (!Mathf.Approximately(vx, zone.@params.vx) || !Mathf.Approximately(vy, zone.@params.vy))
+                {
+                    session.BeginEdit();
+                    session.SetZoneParams(zone.id, vx, vy, zone.@params.rate);
+                    changed = true;
+                }
             }
             else if (zone.type == "heat" || zone.type == "cold")
             {
                 float rate = Row("rate", $"{zone.id}.rate", zone.@params.rate, fieldText);
-                if (!Mathf.Approximately(rate, zone.@params.rate)) { zone.@params.rate = rate; changed = true; }
+                if (!Mathf.Approximately(rate, zone.@params.rate))
+                {
+                    session.BeginEdit();
+                    session.SetZoneParams(zone.id, zone.@params.vx, zone.@params.vy, rate);
+                    changed = true;
+                }
             }
 
             bool on = zone.start_state != "off";
             bool nowOn = GUILayout.Toggle(on, on ? "start: on" : "start: off");
             if (nowOn != on)
             {
-                zone.start_state = nowOn ? "on" : "off";
+                session.BeginEdit();
+                session.SetZoneEnabled(zone.id, nowOn);
                 changed = true;
             }
 

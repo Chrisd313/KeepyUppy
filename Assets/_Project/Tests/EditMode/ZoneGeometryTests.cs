@@ -76,36 +76,6 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
-        public void Resize_MovesTheDraggedCornerAndPinsTheOpposite()
-        {
-            var rect = new Rect(10f, 4f, 6f, 5f);
-
-            Rect resized = ZoneGeometry.Resize(rect, ZoneCorner.BottomLeft, new Vector2(12.5f, 6.5f));
-
-            // Opposite corner is the top-right tile (15, 8), which must not move.
-            Assert.AreEqual(12f, resized.xMin, 1e-5f);
-            Assert.AreEqual(6f, resized.yMin, 1e-5f);
-            Assert.AreEqual(16f, resized.xMax, 1e-5f);
-            Assert.AreEqual(9f, resized.yMax, 1e-5f);
-        }
-
-        [Test]
-        public void Resize_DraggedPastTheOppositeEdgeFlipsInsteadOfInverting()
-        {
-            var rect = new Rect(10f, 4f, 6f, 5f);
-
-            // Drag the bottom-left handle above and right of the far corner.
-            Rect resized = ZoneGeometry.Resize(rect, ZoneCorner.BottomLeft, new Vector2(20.5f, 12.5f));
-
-            Assert.Greater(resized.width, 0f, "width must never go negative");
-            Assert.Greater(resized.height, 0f, "height must never go negative");
-            Assert.AreEqual(15f, resized.xMin, 1e-5f);
-            Assert.AreEqual(8f, resized.yMin, 1e-5f);
-            Assert.AreEqual(21f, resized.xMax, 1e-5f);
-            Assert.AreEqual(13f, resized.yMax, 1e-5f);
-        }
-
-        [Test]
         public void Move_KeepsTheSizeAndSnapsToTiles()
         {
             var rect = new Rect(10f, 4f, 6f, 5f);
@@ -171,6 +141,25 @@ namespace KeepyUppy.SimTests
 
             Assert.AreEqual(15f, afterMore.xMin, 1e-5f, "the anchor must not follow the cursor");
             Assert.AreEqual(20f, afterMore.xMax, 1e-5f);
+        }
+
+        [Test]
+        public void Snap_ForcesTypedValuesOntoTheGridAndIntoTheRoom()
+        {
+            Assert.AreEqual(new Rect(2f, 3f, 4f, 5f), ZoneGeometry.Snap(new Rect(2.4f, 2.6f, 4.1f, 4.8f)));
+
+            // Off the right-hand wall: the whole rect is pulled back inside.
+            Assert.AreEqual(new Rect(26f, 13f, 6f, 5f), ZoneGeometry.Snap(new Rect(100f, 100f, 6f, 5f)));
+
+            // Degenerate input still yields a usable zone.
+            Assert.AreEqual(new Rect(0f, 0f, 1f, 1f), ZoneGeometry.Snap(new Rect(-5f, -5f, 0f, 0f)));
+        }
+
+        [Test]
+        public void Snap_LeavesAnAlreadyValidRectAlone()
+        {
+            var rect = new Rect(20f, 1f, 6f, 10f);
+            Assert.AreEqual(rect, ZoneGeometry.Snap(rect));
         }
     }
 }
