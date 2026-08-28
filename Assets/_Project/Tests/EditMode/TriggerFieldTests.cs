@@ -1,4 +1,5 @@
 using KeepyUppy.Sim;
+using KeepyUppy.Sim.Entities;
 using KeepyUppy.Sim.Triggers;
 using NUnit.Framework;
 using UnityEngine;
@@ -140,6 +141,143 @@ namespace KeepyUppy.SimTests
 
             StepPlayer(field, 0, new Vector2(12f, 2f));
             Assert.AreEqual(1, field.FiredThisStep.Count, "the room replays from the start");
+        }
+
+        static EntityField OneDormantSaw(out AirField air)
+        {
+            air = new AirField();
+            var field = new EntityField();
+
+            field.Add(new SimEntity
+            {
+                Id = "e01", Kind = EntityKind.Saw, Radius = 0.6f, Speed = 0f,
+                Points = new[] { new Vector2(20f, 8f) },
+                Active = false,
+            }, air);
+
+            return field;
+        }
+
+        [Test]
+        public void Link_On_ArmsADormantEntity_OnTheStepAfterTheTriggerFires()
+        {
+            EntityField entities = OneDormantSaw(out AirField air);
+
+            var field = new TriggerField();
+            field.Add(Region("t01", once: true));
+            field.AddLink(new SimLink
+            {
+                FromIndex = 0, ToIds = new[] { "e01" }, Action = LinkAction.On, DelaySteps = 0,
+            });
+
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            Assert.IsFalse(entities.Find("e01").Active, "effects land on the NEXT step");
+
+            field.Step(1, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            Assert.IsTrue(entities.Find("e01").Active);
+        }
+
+        [Test]
+        public void Link_Delay_AppliesExactlyOnItsStep()
+        {
+            EntityField entities = OneDormantSaw(out AirField air);
+
+            var field = new TriggerField();
+            field.Add(Region("t01", once: true));
+            field.AddLink(new SimLink
+            {
+                FromIndex = 0, ToIds = new[] { "e01" }, Action = LinkAction.On, DelaySteps = 24,
+            });
+
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+
+            // Fired on step 0, so it is queued for step 0 + 1 + 24 = 25. The +1 is the
+            // "effects land on the next step" rule, not an off-by-one.
+            for (int step = 1; step <= 26; step++)
+            {
+                field.Step(step, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+                bool expected = step >= 25;
+                Assert.AreEqual(expected, entities.Find("e01").Active, $"step {step}");
+            }
+        }
+
+        [Test]
+        public void Link_Toggle_FlipsWhateverStateTheTargetIsIn()
+        {
+            EntityField entities = OneDormantSaw(out AirField air);
+
+            var field = new TriggerField();
+            field.Add(Region("t01", once: false));
+            field.AddLink(new SimLink
+            {
+                FromIndex = 0, ToIds = new[] { "e01" }, Action = LinkAction.Toggle, DelaySteps = 0,
+            });
+
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(1, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            Assert.IsTrue(entities.Find("e01").Active, "first entry armed it");
+
+            field.Step(2, new Vector2(0f, 2f), true, Vector2.zero, entities, air);
+            field.Step(3, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(4, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            Assert.IsFalse(entities.Find("e01").Active, "re-entry toggled it back off");
+        }
+
+        [Test]
+        public void Link_SwitchesAnAirZone_ById()
+        {
+            var air = new AirField();
+            air.Add(new AirZone("z01", new Rect(0f, 0f, 4f, 4f), new Vector2(0f, 5f), false));
+
+            var field = new TriggerField();
+            field.Add(Region("t01", once: true));
+            field.AddLink(new SimLink
+            {
+                FromIndex = 0, ToIds = new[] { "z01" }, Action = LinkAction.On, DelaySteps = 0,
+            });
+
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, null, air);
+            field.Step(1, new Vector2(12f, 2f), true, Vector2.zero, null, air);
+
+            Assert.IsTrue(air[0].enabled);
+        }
+
+        [Test]
+        public void Link_Inert_ChangesNothing()
+        {
+            EntityField entities = OneDormantSaw(out AirField air);
+
+            var field = new TriggerField();
+            field.Add(Region("t01", once: true));
+            field.AddLink(new SimLink
+            {
+                FromIndex = 0, ToIds = new[] { "e01" }, Action = LinkAction.Inert, DelaySteps = 0,
+            });
+
+            for (int step = 0; step < 10; step++)
+                field.Step(step, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+
+            Assert.IsFalse(entities.Find("e01").Active, "arm and fire are parsed, not simulated");
+        }
+
+        [Test]
+        public void Reset_DropsPendingDelays()
+        {
+            EntityField entities = OneDormantSaw(out AirField air);
+
+            var field = new TriggerField();
+            field.Add(Region("t01", once: true));
+            field.AddLink(new SimLink
+            {
+                FromIndex = 0, ToIds = new[] { "e01" }, Action = LinkAction.On, DelaySteps = 30,
+            });
+
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            Assert.AreEqual(1, field.PendingCount, "queued but not yet due");
+
+            field.Reset();
+
+            Assert.AreEqual(0, field.PendingCount, "a restart drops a delay in flight");
         }
     }
 }

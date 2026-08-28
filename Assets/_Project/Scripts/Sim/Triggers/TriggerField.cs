@@ -19,6 +19,17 @@ namespace KeepyUppy.Sim.Triggers
     {
         readonly List<SimTrigger> _triggers = new List<SimTrigger>();
 
+        readonly List<SimLink> _links = new List<SimLink>();
+
+        /// <summary>Links waiting out a delay. Drained in insertion order.</summary>
+        readonly List<Pending> _pending = new List<Pending>();
+
+        struct Pending
+        {
+            public int step;
+            public int link;
+        }
+
         /// <summary>Indices of the triggers that fired on the most recent step, in list order.</summary>
         public readonly List<int> FiredThisStep = new List<int>();
 
@@ -28,9 +39,14 @@ namespace KeepyUppy.Sim.Triggers
         public int Count => _triggers.Count;
         public SimTrigger this[int i] => _triggers[i];
 
+        public int LinkCount => _links.Count;
+        public int PendingCount => _pending.Count;
+
         public void Clear()
         {
             _triggers.Clear();
+            _links.Clear();
+            _pending.Clear();
             FiredThisStep.Clear();
             UnknownCount = 0;
         }
@@ -43,6 +59,11 @@ namespace KeepyUppy.Sim.Triggers
 
             trigger.Reset();
             _triggers.Add(trigger);
+        }
+
+        public void AddLink(SimLink link)
+        {
+            if (link != null) _links.Add(link);
         }
 
         public int IndexOf(string id)
@@ -63,6 +84,7 @@ namespace KeepyUppy.Sim.Triggers
         public void Reset()
         {
             for (int i = 0; i < _triggers.Count; i++) _triggers[i].Reset();
+            _pending.Clear();
             FiredThisStep.Clear();
         }
 
@@ -89,6 +111,86 @@ namespace KeepyUppy.Sim.Triggers
 
                 trigger.Fired = true;
                 FiredThisStep.Add(i);
+            }
+
+            // Queue every link the fires above own, then drain whatever is due. Queue first,
+            // so a zero-delay link fires on the NEXT step rather than this one.
+            for (int i = 0; i < FiredThisStep.Count; i++)
+            {
+                int trigger = FiredThisStep[i];
+
+                for (int l = 0; l < _links.Count; l++)
+                {
+                    if (_links[l].FromIndex != trigger) continue;
+                    _pending.Add(new Pending { step = step + 1 + _links[l].DelaySteps, link = l });
+                }
+            }
+
+            Drain(step, entities, air);
+        }
+
+        /// <summary>
+        /// Applies everything due, in insertion order, and compacts what is left in place.
+        /// Forward iteration is load-bearing: two links landing on the same step must apply in
+        /// the order they were queued, on every run.
+        /// </summary>
+        void Drain(int step, EntityField entities, AirField air)
+        {
+            int keep = 0;
+
+            for (int i = 0; i < _pending.Count; i++)
+            {
+                Pending item = _pending[i];
+
+                if (item.step > step)
+                {
+                    _pending[keep++] = item;
+                    continue;
+                }
+
+                Apply(_links[item.link], entities, air);
+            }
+
+            _pending.RemoveRange(keep, _pending.Count - keep);
+        }
+
+        static void Apply(SimLink link, EntityField entities, AirField air)
+        {
+            if (link.Action == LinkAction.Inert || link.ToIds == null) return;
+
+            foreach (string id in link.ToIds)
+            {
+                // An entity first: a fan is both an entity and a zone sharing one id, and its
+                // AirZone is republished from Active every step, so setting the entity is
+                // enough and there is no fan special case.
+                SimEntity entity = entities?.Find(id);
+                if (entity != null)
+                {
+                    entity.Active = Next(link.Action, entity.Active);
+                    continue;
+                }
+
+                if (air == null) continue;
+
+                for (int i = 0; i < air.Count; i++)
+                {
+                    if (air[i].id != id) continue;
+
+                    AirZone zone = air[i];
+                    zone.enabled = Next(link.Action, zone.enabled);
+                    air[i] = zone;
+                }
+            }
+        }
+
+        static bool Next(LinkAction action, bool current)
+        {
+            switch (action)
+            {
+                case LinkAction.On:     return true;
+                case LinkAction.Off:    return false;
+                case LinkAction.Toggle: return !current;
+                default:                return current;
             }
         }
 
