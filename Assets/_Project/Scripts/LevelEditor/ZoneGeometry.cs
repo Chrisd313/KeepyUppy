@@ -77,14 +77,18 @@ namespace KeepyUppy.LevelEditing
         {
             if (corner == ZoneCorner.None) return rect;
 
-            return Normalise(Opposite(rect, corner), GridCursor.ToTile(world));
+            return Normalise(AnchorOf(rect, corner), GridCursor.ToTile(world));
         }
 
         /// <summary>
-        /// The tile diagonally opposite a corner. Tile coordinates, not rect edges: a rect of
-        /// x 10 width 6 covers tiles 10..15, so its far tile is 15 and not 16.
+        /// The tile diagonally opposite a corner — the one a resize pivots around. Tile
+        /// coordinates, not rect edges: a rect of x 10 width 6 covers tiles 10..15, so its far
+        /// tile is 15 and not 16.
+        ///
+        /// Public because a resize drag must capture this ONCE at mouse-down: recomputing it
+        /// from the live rect each frame moves the anchor as soon as the drag crosses it.
         /// </summary>
-        static Vector2Int Opposite(Rect rect, ZoneCorner corner)
+        public static Vector2Int AnchorOf(Rect rect, ZoneCorner corner)
         {
             int minX = Mathf.RoundToInt(rect.xMin);
             int minY = Mathf.RoundToInt(rect.yMin);

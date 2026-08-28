@@ -142,5 +142,35 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(new Rect(0f, 0f, 1f, 1f), ZoneGeometry.RectOf(null));
             Assert.AreEqual(new Rect(0f, 0f, 1f, 1f), ZoneGeometry.RectOf(new[] { 1f, 2f }));
         }
+
+        [Test]
+        public void AnchorOf_IsTheTileDiagonallyOppositeAndDoesNotMoveWithTheRect()
+        {
+            var rect = new Rect(10f, 4f, 6f, 5f);   // tiles x 10..15, y 4..8
+
+            Assert.AreEqual(new Vector2Int(15, 8), ZoneGeometry.AnchorOf(rect, ZoneCorner.BottomLeft));
+            Assert.AreEqual(new Vector2Int(10, 8), ZoneGeometry.AnchorOf(rect, ZoneCorner.BottomRight));
+            Assert.AreEqual(new Vector2Int(15, 4), ZoneGeometry.AnchorOf(rect, ZoneCorner.TopLeft));
+            Assert.AreEqual(new Vector2Int(10, 4), ZoneGeometry.AnchorOf(rect, ZoneCorner.TopRight));
+        }
+
+        [Test]
+        public void ResizingPastTheAnchorAndOnwardKeepsGrowingFromTheAnchor()
+        {
+            // The bug this pins: deriving the anchor from the already-mutated rect each frame
+            // re-anchors it to the corner under the cursor, and the rect collapses into a band
+            // trailing the drag instead of growing from the corner that was pinned.
+            var rect = new Rect(10f, 4f, 6f, 5f);
+            Vector2Int anchor = ZoneGeometry.AnchorOf(rect, ZoneCorner.BottomLeft);
+
+            Rect afterFlip = ZoneGeometry.Normalise(anchor, new Vector2Int(18, 10));
+            Rect afterMore = ZoneGeometry.Normalise(anchor, new Vector2Int(19, 11));
+
+            Assert.AreEqual(15f, afterFlip.xMin, 1e-5f);
+            Assert.AreEqual(19f, afterFlip.xMax, 1e-5f);
+
+            Assert.AreEqual(15f, afterMore.xMin, 1e-5f, "the anchor must not follow the cursor");
+            Assert.AreEqual(20f, afterMore.xMax, 1e-5f);
+        }
     }
 }

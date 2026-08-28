@@ -53,6 +53,15 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         bool _zoneForceNew;
 
+        /// <summary>
+        /// The tile the current resize pivots around, captured once at mouse-down.
+        ///
+        /// Recomputing it from the live rect each frame moves the anchor the moment a drag
+        /// crosses it: the rect flips correctly on the first frame, then re-anchors to the
+        /// corner under the cursor and collapses into a band trailing it.
+        /// </summary>
+        Vector2Int _zoneAnchor;
+
         // Overlays
         bool _showPanel = true;
         bool _showGrid = true;
@@ -201,7 +210,8 @@ namespace KeepyUppy.LevelEditing
                 _status = "deleted entity";
             }
 
-            if (kb.deleteKey.wasPressedThisFrame && Session.SelectedZoneId != null)
+            if (kb.deleteKey.wasPressedThisFrame && Session.Tool == EditorTool.Zone
+                && Session.SelectedZoneId != null)
             {
                 Session.BeginEdit();
                 Session.DeleteZone(Session.SelectedZoneId);
@@ -351,6 +361,7 @@ namespace KeepyUppy.LevelEditing
 
                 if (_zoneCorner != ZoneCorner.None)
                 {
+                    _zoneAnchor = ZoneGeometry.AnchorOf(ZoneGeometry.RectOf(selected.rect), _zoneCorner);
                     Session.BeginEdit();
                     _zoneCreating = false;
                     _dragging = true;
@@ -395,7 +406,7 @@ namespace KeepyUppy.LevelEditing
             Rect current = ZoneGeometry.RectOf(dragged.rect);
 
             Rect updated = _zoneCorner != ZoneCorner.None
-                ? ZoneGeometry.Resize(current, _zoneCorner, world)
+                ? ZoneGeometry.Normalise(_zoneAnchor, GridCursor.ToTile(world))
                 : ZoneGeometry.Move(current, world + _zoneDragOffset);
 
             Session.SetZoneRect(dragged.id, updated);
