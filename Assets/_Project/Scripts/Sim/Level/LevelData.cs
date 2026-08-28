@@ -169,6 +169,19 @@ namespace KeepyUppy.Sim.Level
 
         /// <summary>once:true player_region triggers are the betrayal-trap workhorse.</summary>
         public bool once = true;
+
+        /// <summary>
+        /// Drawn to the player, not only to the author. Defaults false, which is the GDD 9.3
+        /// workhorse: an unmarked region that fires when the player commits.
+        /// </summary>
+        public bool visible;
+
+        /// <summary>
+        /// Timer triggers only: seconds from the start of the run. Converted to whole fixed
+        /// steps at load (SimClock.StepsIn), so nothing multiplies seconds during a run.
+        /// Ignored by the region types.
+        /// </summary>
+        public float seconds;
     }
 
     [Serializable]
