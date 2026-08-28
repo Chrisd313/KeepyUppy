@@ -11,6 +11,15 @@ namespace KeepyUppy.Runtime
     /// betrayal trap — they are drawn in the editor, and nowhere else — so this deliberately
     /// shows the player less than the editor does.
     ///
+    /// A quad exists for every trigger, not only the visible ones, and Visible is applied as
+    /// SetActive every frame rather than decided once at build time. Toggling visible in the
+    /// inspector goes through SyncDynamic -> LevelLoader.ApplyEntities -> LoadTriggers, which
+    /// clears and re-adds every trigger at the same count — so a build-time decision (a null
+    /// hole for the invisible ones, as ZoneViewSync holes out fan-owned zones) would leave a
+    /// newly-visible trigger undrawn and a newly-invisible one still drawn until something
+    /// else changed the trigger count. Reading Visible per frame removes that drift instead
+    /// of chasing it with a second rebuild trigger.
+    ///
     /// Violet: not the reserved hazard hue and not balloon yellow (GDD 13.1). A trigger is
     /// not lethal, and wearing the colour that means "this hurts" would be a lie.
     /// </summary>
@@ -30,7 +39,6 @@ namespace KeepyUppy.Runtime
             for (int i = 0; i < World.Triggers.Count && i < _views.Count; i++)
             {
                 GameObject view = _views[i];
-                if (view == null) continue;   // an invisible trigger: no quad was made for it
 
                 Rect rect = World.Triggers[i].Rect;
 
@@ -39,6 +47,7 @@ namespace KeepyUppy.Runtime
                 // does it.
                 view.transform.localPosition = new Vector3(rect.center.x, rect.center.y, -0.24f);
                 view.transform.localScale = new Vector3(rect.width, rect.height, 1f);
+                view.SetActive(World.Triggers[i].Visible);
             }
         }
 
@@ -51,13 +60,6 @@ namespace KeepyUppy.Runtime
 
             for (int i = 0; i < World.Triggers.Count; i++)
             {
-                if (!World.Triggers[i].Visible)
-                {
-                    // Hold the slot so the list stays index-parallel with the TriggerField.
-                    _views.Add(null);
-                    continue;
-                }
-
                 Rect rect = World.Triggers[i].Rect;
 
                 _views.Add(QuadView.Create(transform, $"trigger_{World.Triggers[i].Id}", Marked,
