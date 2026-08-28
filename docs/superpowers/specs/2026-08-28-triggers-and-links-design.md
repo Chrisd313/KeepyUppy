@@ -1,7 +1,7 @@
 # Triggers and links — design
 
 **Date:** 2026-08-28
-**Status:** designed
+**Status:** built 2026-08-28
 **Related:** `docs/level-editor-spec.md` §3, §4 (tool table), §7 (lints, phases) ·
 `docs/balloon-game-gdd.md` §8, §9.2a, §9.3, §13.1, §18 ·
 `docs/superpowers/specs/2026-08-28-zone-tool-design.md`

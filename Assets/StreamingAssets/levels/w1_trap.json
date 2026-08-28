@@ -1,0 +1,103 @@
+{
+    "id": "w1_trap",
+    "name": "Trap Draft",
+    "world": 1,
+    "index": 99,
+    "spawn": {
+        "player": [
+            4.0,
+            2.0
+        ],
+        "balloon": [
+            6.0,
+            13.0
+        ],
+        "balloon_inflation": "nominal"
+    },
+    "exit": {
+        "pos": [
+            29.0,
+            4.0
+        ],
+        "shape": "ring",
+        "diameter": 1.600000023841858,
+        "required_band": "nominal"
+    },
+    "tiles": [
+        "################################",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "################################"
+    ],
+    "entities": [
+        {
+            "id": "s01",
+            "type": "spike_bar",
+            "pos": [
+                22.0,
+                16.0
+            ],
+            "params": {
+                "radius": 0.25,
+                "speed": 0.0,
+                "battery": 0.0,
+                "aggro_radius": 0.0,
+                "patience": 0.0,
+                "power": 0.0,
+                "angle": 90.0,
+                "length": 1.0,
+                "delay": 0.0,
+                "duration": 0.0
+            },
+            "path": [],
+            "path_mode": "pingpong",
+            "phase": 0.0,
+            "start_state": "dormant"
+        }
+    ],
+    "zones": [],
+    "links": [
+        {
+            "from": "t01",
+            "to": [
+                "s01"
+            ],
+            "action": "on",
+            "delay": 0.0
+        }
+    ],
+    "triggers": [
+        {
+            "id": "t01",
+            "type": "player_region",
+            "rect": [
+                16.0,
+                0.0,
+                4.0,
+                18.0
+            ],
+            "once": true,
+            "visible": false,
+            "seconds": 0.0
+        }
+    ],
+    "meta": {
+        "par_touches": 4,
+        "author_note": "Draft: dormant spike bar armed by a once player_region trigger, to feel out the one-step arming delay. Not in index.json on purpose.",
+        "tuning_profile": "default"
+    }
+}
