@@ -826,6 +826,9 @@ namespace KeepyUppy.LevelEditing
             DrawPathRow(entity);
             DrawStateRow(entity);
 
+            if (Session.Tool == EditorTool.Zone && ZoneInspector.Draw(Session, _fieldText))
+                SyncDynamic();
+
             GUILayout.EndArea();
         }
 
