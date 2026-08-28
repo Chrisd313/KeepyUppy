@@ -36,6 +36,23 @@ namespace KeepyUppy.LevelEditing
         int _draggingWaypoint = -1;
         string _lastSelected;
 
+        /// <summary>Which corner handle the current drag has hold of, if any.</summary>
+        ZoneCorner _zoneCorner;
+
+        /// <summary>Cursor-to-bottom-left offset, so a moved zone does not jump to the cursor.</summary>
+        Vector2 _zoneDragOffset;
+
+        /// <summary>Drag-in-progress creates a zone rather than moving one.</summary>
+        bool _zoneCreating;
+
+        /// <summary>
+        /// N has armed the next drag to create, even inside an existing zone. One-shot:
+        /// overlapping zones are a supported design (GDD 6.2 — they sum), so there has to be
+        /// a way to draw one on top of another, but it must not be the default or every
+        /// attempt to nudge a zone would spawn a new one.
+        /// </summary>
+        bool _zoneForceNew;
+
         // Overlays
         bool _showPanel = true;
         bool _showGrid = true;
@@ -156,8 +173,19 @@ namespace KeepyUppy.LevelEditing
             if (kb.digit1Key.wasPressedThisFrame) Session.Tool = EditorTool.Paint;
             if (kb.digit2Key.wasPressedThisFrame) Session.Tool = EditorTool.RectFill;
             if (kb.digit3Key.wasPressedThisFrame) Session.Tool = EditorTool.Select;
+            if (kb.digit4Key.wasPressedThisFrame) Session.Tool = EditorTool.Zone;
             if (kb.digit5Key.wasPressedThisFrame) Session.Tool = EditorTool.Path;
             if (kb.pKey.wasPressedThisFrame) Session.Tool = EditorTool.Place;
+
+            if (Session.Tool != EditorTool.Zone) _zoneForceNew = false;
+
+            // A toggle, not a one-way arm, so it can be cancelled without Escape - which is
+            // the shell's Back (KeyboardShellInput) and reserved by CLAUDE.md's keybind list.
+            if (kb.nKey.wasPressedThisFrame && Session.Tool == EditorTool.Zone)
+            {
+                _zoneForceNew = !_zoneForceNew;
+                _status = _zoneForceNew ? "new zone: drag to place" : "cancelled";
+            }
 
             if (kb.uKey.wasPressedThisFrame) _showPanel = !_showPanel;
             if (kb.gKey.wasPressedThisFrame) _showGrid = !_showGrid;
@@ -171,6 +199,14 @@ namespace KeepyUppy.LevelEditing
                 Session.DeleteEntity(Session.SelectedEntityId);
                 SyncDynamic();
                 _status = "deleted entity";
+            }
+
+            if (kb.deleteKey.wasPressedThisFrame && Session.SelectedZoneId != null)
+            {
+                Session.BeginEdit();
+                Session.DeleteZone(Session.SelectedZoneId);
+                SyncDynamic();
+                _status = "deleted zone";
             }
         }
 
@@ -200,6 +236,7 @@ namespace KeepyUppy.LevelEditing
                 case EditorTool.Paint: PaintTool(mouse, tile); break;
                 case EditorTool.RectFill: RectTool(mouse, tile); break;
                 case EditorTool.Select: SelectTool(mouse, world); break;
+                case EditorTool.Zone: ZoneTool(mouse, world); break;
                 case EditorTool.Path: PathTool(mouse, world); break;
                 case EditorTool.Place: PlaceTool(mouse, world); break;
             }
@@ -275,6 +312,101 @@ namespace KeepyUppy.LevelEditing
 
             Session.MoveEntity(Session.SelectedEntityId, world + _entityDragOffset);
             SyncDynamic();
+        }
+
+        /// <summary>
+        /// Draw, move, resize and delete zones (level-editor-spec 4, tool 4).
+        ///
+        /// Mouse-down chooses between three drags: a handle of the selected zone resizes, the
+        /// interior of a zone moves it, and empty space creates one. N overrides the middle
+        /// case so a zone can be drawn on top of another.
+        /// </summary>
+        void ZoneTool(Mouse mouse, Vector2 world)
+        {
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                LevelZone hit = Session.ZoneAt(world);
+                if (hit != null)
+                {
+                    Session.BeginEdit();
+                    Session.DeleteZone(hit.id);
+                    SyncDynamic();
+                    _status = "deleted zone";
+                }
+
+                return;
+            }
+
+            if (mouse.leftButton.wasPressedThisFrame)
+            {
+                LevelZone selected = Session.FindZone(Session.SelectedZoneId);
+
+                // Handles belong to the selected zone alone. Every zone showing handles at
+                // once is unreadable in a room with several.
+                _zoneCorner = selected?.rect != null
+                    ? ZoneGeometry.HandleAt(ZoneGeometry.RectOf(selected.rect), world, ZoneHandleRadius)
+                    : ZoneCorner.None;
+
+                LevelZone hit = _zoneForceNew ? null : Session.ZoneAt(world);
+
+                if (_zoneCorner != ZoneCorner.None)
+                {
+                    Session.BeginEdit();
+                    _zoneCreating = false;
+                    _dragging = true;
+                }
+                else if (hit != null)
+                {
+                    Session.SelectedZoneId = hit.id;
+                    Rect rect = ZoneGeometry.RectOf(hit.rect);
+                    _zoneDragOffset = new Vector2(rect.xMin, rect.yMin) - world;
+                    Session.BeginEdit();
+                    _zoneCreating = false;
+                    _dragging = true;
+                }
+                else
+                {
+                    _dragStart = GridCursor.ToTile(world);
+                    _zoneCreating = true;
+                    _dragging = true;
+                }
+            }
+
+            if (!_dragging) return;
+
+            if (_zoneCreating)
+            {
+                if (!mouse.leftButton.wasReleasedThisFrame) return;
+
+                Session.BeginEdit();
+                LevelZone created = Session.AddZone(ZoneGeometry.Normalise(_dragStart, GridCursor.ToTile(world)));
+                SyncDynamic();
+
+                _dragging = false;
+                _zoneCreating = false;
+                _zoneForceNew = false;
+                _status = $"added {created.id}";
+                return;
+            }
+
+            LevelZone dragged = Session.FindZone(Session.SelectedZoneId);
+            if (dragged?.rect == null) { _dragging = false; return; }
+
+            Rect current = ZoneGeometry.RectOf(dragged.rect);
+
+            Rect updated = _zoneCorner != ZoneCorner.None
+                ? ZoneGeometry.Resize(current, _zoneCorner, world)
+                : ZoneGeometry.Move(current, world + _zoneDragOffset);
+
+            Session.SetZoneRect(dragged.id, updated);
+            SyncDynamic();
+
+            if (mouse.leftButton.wasReleasedThisFrame)
+            {
+                _status = _zoneCorner != ZoneCorner.None ? "resized zone" : "moved zone";
+                _dragging = false;
+                _zoneCorner = ZoneCorner.None;
+            }
         }
 
         /// <summary>
@@ -585,6 +717,7 @@ namespace KeepyUppy.LevelEditing
             if (GUILayout.Button("1 Paint", GUILayout.Width(70f))) Session.Tool = EditorTool.Paint;
             if (GUILayout.Button("2 Rect", GUILayout.Width(70f))) Session.Tool = EditorTool.RectFill;
             if (GUILayout.Button("3 Select", GUILayout.Width(70f))) Session.Tool = EditorTool.Select;
+            if (GUILayout.Button("4 Zone", GUILayout.Width(70f))) Session.Tool = EditorTool.Zone;
             if (GUILayout.Button("5 Path", GUILayout.Width(70f))) Session.Tool = EditorTool.Path;
             if (GUILayout.Button("P Place", GUILayout.Width(70f))) Session.Tool = EditorTool.Place;
             GUILayout.Space(20f);
