@@ -265,7 +265,7 @@ Immediate-mode / debug UI only (Unity IMGUI, Godot Control nodes, or Dear ImGui)
 | Paint | `1` | Click-drag paints selected tile. Right-drag erases. |
 | Rect fill | `2` | Drag a rectangle of the selected tile. |
 | Select/move | `3` | Click entity to select. Drag to move. Shift-click multi-select. |
-| Zone | `4` | Drag a rect, then pick type in inspector. |
+| Zone | `4` | Drag empty space to create, drag a zone to move, drag a corner handle to resize. `N` toggles a forced create so an overlapping zone can be drawn. `Delete` or right-click removes one. Type, rect, `params` and `start_state` in the inspector. |
 | Path | `5` | With an entity selected, click to append waypoints. Drag a handle to move one, right-click to delete. Handle 0 is the entity and moves the whole trap. |
 | Link | `6` | Click source, then target. Drawn as an arrow. |
 | Place | `P` | Click drops the palette entity at the cursor. Numbered 7 internally so the reserved digit bindings above do not shuffle. |
@@ -404,3 +404,12 @@ Each phase should be independently useful. Don't start phase N+1 before N is bei
 | **6 — Feedback** | Validation lint, metrics capture, death heatmap | 0.5 day |
 
 Phases 1 and 2 alone already pay for the whole tool.
+
+Zones and `start_state` are built (2026-08-28). Triggers, links and delays are not: they need
+a way to draw a relationship rather than a rectangle, which is a different problem and gets
+its own spec.
+
+All six zone types are authorable, but `LevelLoader.LoadZones` reads only `type: "air"` — the
+other five parse, save and draw while doing nothing. The inspector marks them inert. When
+inflation (GDD §7.2) lands, `heat` and `cold` acquire behaviour and any level already using
+one changes.

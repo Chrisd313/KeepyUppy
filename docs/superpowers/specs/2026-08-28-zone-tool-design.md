@@ -1,7 +1,7 @@
 # The level editor's zone tool — design
 
 **Date:** 2026-08-28
-**Status:** approved, not yet implemented
+**Status:** built 2026-08-28
 **Related:** `docs/level-editor-spec.md` §3, §4 (tool table), §7 (phases) ·
 `docs/balloon-game-gdd.md` §6.2, §13.1, §13.3
 
