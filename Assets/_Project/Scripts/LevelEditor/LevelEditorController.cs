@@ -252,7 +252,8 @@ namespace KeepyUppy.LevelEditing
                 _status = "deleted zone";
             }
 
-            if (kb.deleteKey.wasPressedThisFrame && Session.Tool == EditorTool.Trigger
+            if (kb.deleteKey.wasPressedThisFrame
+                && (Session.Tool == EditorTool.Trigger || Session.Tool == EditorTool.Link)
                 && Session.SelectedTriggerId != null)
             {
                 Session.BeginEdit();
