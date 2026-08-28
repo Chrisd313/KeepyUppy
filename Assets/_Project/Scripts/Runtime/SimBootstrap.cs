@@ -62,8 +62,11 @@ namespace KeepyUppy.Runtime
         public LevelIndex Index => _index;
 
         /// <summary>
-        /// Progression records. Built at boot and never rebuilt — unlike Session, this is
-        /// non-null everywhere, on the menus included, so nothing has to null-check it.
+        /// Progression records. Built at boot and never rebuilt — unlike Session, it is meant
+        /// to stay populated for the rest of the bootstrap's life, on the menus included.
+        /// Callers still null-check it (Bootstrap itself is unassigned until SimBootstrap
+        /// wires it up, and the check is cheap and harmless) — that defensiveness is expected,
+        /// not a sign this promise doesn't hold.
         /// </summary>
         public SaveService Save => _save;
 

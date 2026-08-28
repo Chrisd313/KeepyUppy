@@ -16,7 +16,11 @@ namespace KeepyUppy.Runtime
     {
         public const string Key = "keepyuppy.save";
 
-        public string Read() => PlayerPrefs.GetString(Key, null);
+        // "" rather than null: SaveService.Load treats both as "nothing saved yet" via
+        // string.IsNullOrEmpty, and a null default through PlayerPrefs' native marshalling is
+        // not obviously safe across Unity versions - this is the untestable path every
+        // player's first boot takes, so there is no test run to catch it if it ever isn't.
+        public string Read() => PlayerPrefs.GetString(Key, "");
 
         public void Write(string json)
         {

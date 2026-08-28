@@ -86,7 +86,15 @@ namespace KeepyUppy.SimTests
             }
         }
 
-        public void AssertMatches(in SimSnapshot other, string context)
+        /// <summary>
+        /// <paramref name="includeWinningFrames"/> defaults to true — every ordinary
+        /// determinism comparison must cover it, same as any other field. The one exception is
+        /// restart-purity: WinningFrames is a record of a completed attempt, not per-attempt
+        /// state (WinCount and WinningTouches are its siblings, deliberately kept out of this
+        /// snapshot for the same reason), so it is expected to survive a Restart() and a
+        /// restart-purity comparison must not treat that survival as divergence.
+        /// </summary>
+        public void AssertMatches(in SimSnapshot other, string context, bool includeWinningFrames = true)
         {
             Assert.AreEqual(step, other.step, $"{context}: step");
 
@@ -106,7 +114,8 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(grounded, other.grounded, $"{context}: grounded");
             Assert.AreEqual(isDead, other.isDead, $"{context}: isDead");
             Assert.AreEqual(isWon, other.isWon, $"{context}: isWon");
-            Assert.AreEqual(winningFrames, other.winningFrames, $"{context}: winningFrames");
+            if (includeWinningFrames)
+                Assert.AreEqual(winningFrames, other.winningFrames, $"{context}: winningFrames");
             Assert.AreEqual(entityPositions, other.entityPositions, $"{context}: entity positions");
             Assert.AreEqual(entityExposure, other.entityExposure, $"{context}: entity exposure");
         }
@@ -206,6 +215,31 @@ namespace KeepyUppy.SimTests
             world.Grid.FillBorder();
             world.Balloon.Radius = InflationBands.RadiusOf(InflationBand.Nominal);
             world.Configure(new Vector2(16f, 8f), Vector2.zero, new Vector2(16f, 1.8f), input, 1);
+            return world;
+        }
+
+        /// <summary>
+        /// A balloon-only room with a reachable exit gate, so a replay test can actually win —
+        /// BuildBusyRoom deliberately has no exit (see its comment), which leaves WinningFrames
+        /// at zero in every comparison built from it. A straight drop from above the ring is
+        /// enough; nothing here needs a player or input to land the win.
+        /// </summary>
+        public static SimWorld BuildWinnableRoom(int seed)
+        {
+            var world = new SimWorld
+            {
+                FloorKillsBalloon = false,
+                Exit = new ExitGate
+                {
+                    Present = true, Position = new Vector2(16f, 12f),
+                    Shape = ExitShape.Ring, Diameter = 1.6f,
+                },
+            };
+            world.Grid.Clear();
+            world.Grid.FillBorder();
+            world.Balloon.Radius = InflationBands.RadiusOf(InflationBand.Nominal);
+            world.Reset(new Vector2(16f, 14f), Vector2.zero, seed);
+            world.Balloon.Radius = InflationBands.RadiusOf(InflationBand.Nominal);
             return world;
         }
 
