@@ -28,13 +28,17 @@ namespace KeepyUppy.LevelEditing
 
         /// <summary>
         /// Refreshes zones and entities from the level being edited, leaving geometry, the
-        /// spawns and the run alone. Called after every entity edit so a dragged saw moves
-        /// on screen immediately, as a painted tile does.
+        /// spawns and the run alone. Called after every zone or entity edit so a dragged saw
+        /// moves on screen immediately, as a painted tile does.
+        ///
+        /// Named for what it reloads rather than for entities alone: it has always reloaded
+        /// zones too (LevelLoader.ApplyEntities calls LoadZones), and the old name hid that
+        /// from anyone looking for somewhere to push a zone edit.
         /// </summary>
-        void SyncEntities(LevelData level);
+        void SyncDynamic(LevelData level);
 
         /// <summary>
-        /// Refreshes the exit gate alone, for the same reason as SyncEntities: dragging the
+        /// Refreshes the exit gate alone, for the same reason as SyncDynamic: dragging the
         /// way out should move it on screen rather than restart the room.
         /// </summary>
         void SyncExit(LevelData level);

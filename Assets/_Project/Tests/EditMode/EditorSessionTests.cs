@@ -259,5 +259,204 @@ namespace KeepyUppy.SimTests
 
             Assert.AreEqual(TileKind.SpikeDown, world.Grid[12, 7]);
         }
+
+        [Test]
+        public void AddZone_CreatesAnAirZoneAndSelectsIt()
+        {
+            var session = new EditorSession();
+
+            LevelZone zone = session.AddZone(new Rect(20f, 1f, 6f, 10f));
+
+            Assert.AreEqual("z01", zone.id);
+            Assert.AreEqual("air", zone.type);
+            Assert.AreEqual("on", zone.start_state);
+            Assert.AreEqual(new[] { 20f, 1f, 6f, 10f }, zone.rect);
+            Assert.AreEqual("z01", session.SelectedZoneId);
+            Assert.AreEqual(1, session.Level.zones.Length);
+            Assert.IsTrue(session.Dirty);
+        }
+
+        [Test]
+        public void ZoneIds_ReuseTheLowestFreeSlotAfterADeletion()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 2f, 2f));
+            session.AddZone(new Rect(4f, 0f, 2f, 2f));
+            session.AddZone(new Rect(8f, 0f, 2f, 2f));
+
+            Assert.IsTrue(session.DeleteZone("z02"));
+
+            Assert.AreEqual("z02", session.AddZone(new Rect(12f, 0f, 2f, 2f)).id);
+        }
+
+        [Test]
+        public void ZoneAt_PicksTheSmallestZoneContainingThePoint()
+        {
+            // A small vent drawn inside a room-wide thermal must stay reachable.
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 30f, 16f));           // z01, the thermal
+            LevelZone vent = session.AddZone(new Rect(10f, 4f, 2f, 2f));   // z02, inside it
+
+            Assert.AreEqual(vent.id, session.ZoneAt(new Vector2(11f, 5f)).id);
+            Assert.AreEqual("z01", session.ZoneAt(new Vector2(25f, 14f)).id);
+            Assert.IsNull(session.ZoneAt(new Vector2(31.5f, 17.5f)));
+        }
+
+        [Test]
+        public void ZoneAt_IgnoresAZoneWithAMalformedRect()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 4f, 4f));
+            session.Level.zones[0].rect = new[] { 1f, 2f };   // hand-edited badly
+
+            Assert.IsNull(session.ZoneAt(new Vector2(2f, 2f)));
+        }
+
+        [Test]
+        public void SetZoneRect_WritesBackThroughTheSchemaArray()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 4f, 4f));
+
+            session.SetZoneRect("z01", new Rect(6f, 2f, 3f, 5f));
+
+            Assert.AreEqual(new[] { 6f, 2f, 3f, 5f }, session.FindZone("z01").rect);
+        }
+
+        [Test]
+        public void DeleteZone_ClearsTheSelectionOnlyForTheDeletedZone()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(0f, 0f, 4f, 4f));
+            LevelZone second = session.AddZone(new Rect(8f, 0f, 4f, 4f));
+
+            Assert.IsTrue(session.DeleteZone("z01"));
+            Assert.AreEqual(second.id, session.SelectedZoneId, "deleting another zone must not clear the selection");
+
+            Assert.IsTrue(session.DeleteZone(second.id));
+            Assert.IsNull(session.SelectedZoneId);
+
+            Assert.IsFalse(session.DeleteZone("z99"), "deleting a missing zone reports failure");
+        }
+
+        [Test]
+        public void ZoneEdits_SurviveAnUndoRoundTrip()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(20f, 1f, 6f, 10f));
+
+            session.BeginEdit();
+            session.SetZoneRect("z01", new Rect(2f, 2f, 2f, 2f));
+
+            Assert.IsTrue(session.UndoEdit());
+            Assert.AreEqual(new[] { 20f, 1f, 6f, 10f }, session.FindZone("z01").rect);
+        }
+
+        [Test]
+        public void UndoingAZoneCreation_ClearsTheDanglingSelection()
+        {
+            var session = new EditorSession();
+
+            session.BeginEdit();
+            session.AddZone(new Rect(20f, 1f, 6f, 10f));
+
+            Assert.AreEqual("z01", session.SelectedZoneId);
+            Assert.IsTrue(session.UndoEdit());
+
+            Assert.IsNull(session.SelectedZoneId, "the selected zone no longer exists");
+        }
+
+        [Test]
+        public void SelectingAZone_ClearsTheExitSelection()
+        {
+            var session = new EditorSession();
+            session.SelectExit();
+
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+
+            Assert.IsFalse(session.ExitSelected, "a zone and the exit must not both be selected");
+            Assert.AreEqual("z01", session.SelectedZoneId);
+        }
+
+        [Test]
+        public void SelectingTheExit_ClearsTheZoneSelection()
+        {
+            // Otherwise the inspector's zone branch, which dispatches first, permanently
+            // shadows the exit inspector.
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+
+            session.SelectExit();
+
+            Assert.IsNull(session.SelectedZoneId);
+            Assert.IsTrue(session.ExitSelected);
+        }
+
+        [Test]
+        public void InspectorSetters_MarkTheSessionDirty()
+        {
+            // Dirty is what makes the editor auto-save on the way out. An edit that does not
+            // set it is an edit the author loses without being told.
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+            session.MarkSaved();
+
+            session.SetZoneType("z01", "heat");
+            Assert.IsTrue(session.Dirty, "type");
+
+            session.MarkSaved();
+            session.SetZoneParams("z01", 1f, 2f, 3f);
+            Assert.IsTrue(session.Dirty, "params");
+
+            session.MarkSaved();
+            session.SetZoneEnabled("z01", false);
+            Assert.IsTrue(session.Dirty, "start_state");
+        }
+
+        [Test]
+        public void SetZoneEnabled_WritesTheSchemaStrings()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+
+            session.SetZoneEnabled("z01", false);
+            Assert.AreEqual("off", session.FindZone("z01").start_state);
+
+            session.SetZoneEnabled("z01", true);
+            Assert.AreEqual("on", session.FindZone("z01").start_state);
+        }
+
+        [Test]
+        public void SetZoneParams_SurvivesANullParamsBlock()
+        {
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+            session.FindZone("z01").@params = null;   // hand-edited JSON
+
+            session.SetZoneParams("z01", 1.5f, 4.5f, 0f);
+
+            Assert.AreEqual(4.5f, session.FindZone("z01").@params.vy, 1e-5f);
+        }
+
+        [Test]
+        public void TheThreeSelectionsAreMutuallyExclusive()
+        {
+            // More than the inspector reads these: the Delete key tests each independently, so
+            // two live selections means one keypress destroying two objects.
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+
+            session.SelectEntity("e01");
+            Assert.IsNull(session.SelectedZoneId);
+            Assert.IsFalse(session.ExitSelected);
+
+            session.SelectZone("z01");
+            Assert.IsNull(session.SelectedEntityId);
+            Assert.IsFalse(session.ExitSelected);
+
+            session.SelectExit();
+            Assert.IsNull(session.SelectedEntityId);
+            Assert.IsNull(session.SelectedZoneId);
+        }
     }
 }

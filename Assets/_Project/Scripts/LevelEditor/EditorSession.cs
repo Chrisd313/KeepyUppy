@@ -41,6 +41,13 @@ namespace KeepyUppy.LevelEditing
         public string SelectedEntityId;
 
         /// <summary>
+        /// The selected zone, kept separately from <see cref="SelectedEntityId"/>: a zone is
+        /// not an entity, and sharing the field would mean every read had to ask which kind
+        /// of thing it had.
+        /// </summary>
+        public string SelectedZoneId;
+
+        /// <summary>
         /// The exit is selected instead of an entity. Kept as a separate flag rather than a
         /// magic entity id: the gate is not an entity, and pretending otherwise would leak
         /// into the entity list, the id allocator and every foreach over it.
@@ -214,6 +221,10 @@ namespace KeepyUppy.LevelEditing
 
             // The selection may have been deleted by the edit we just reversed.
             if (FindEntity(SelectedEntityId) == null) SelectedEntityId = null;
+            // Same for the zone selection: an undo that removes the selected zone must not
+            // leave the id pointing at something that is gone, or the next Delete keypress
+            // pushes an undo entry for a deletion that cannot happen.
+            if (FindZone(SelectedZoneId) == null) SelectedZoneId = null;
         }
 
         // ------------------------------------------------------------------ tiles
@@ -285,7 +296,7 @@ namespace KeepyUppy.LevelEditing
             var entities = new List<LevelEntity>(Level.entities ?? new LevelEntity[0]) { entity };
             Level.entities = entities.ToArray();
 
-            SelectedEntityId = entity.id;
+            SelectEntity(entity.id);
             Dirty = true;
             return entity;
         }
@@ -314,6 +325,171 @@ namespace KeepyUppy.LevelEditing
             return true;
         }
 
+        // -------------------------------------------------------------------- zones
+
+        public LevelZone FindZone(string id)
+        {
+            if (string.IsNullOrEmpty(id) || Level.zones == null) return null;
+
+            foreach (LevelZone zone in Level.zones)
+                if (zone != null && zone.id == id) return zone;
+
+            return null;
+        }
+
+        /// <summary>
+        /// The zone under a world position, smallest first.
+        ///
+        /// Smallest wins because zones nest and overlap by design (GDD 6.2 — overlapping air
+        /// zones sum). Without this a small vent drawn inside a room-wide thermal would be
+        /// permanently unselectable, which is the same reasoning that makes the select tool
+        /// test entities before the exit.
+        /// </summary>
+        public LevelZone ZoneAt(Vector2 world)
+        {
+            if (Level.zones == null) return null;
+
+            LevelZone best = null;
+            float bestArea = float.MaxValue;
+
+            foreach (LevelZone zone in Level.zones)
+            {
+                if (zone?.rect == null || zone.rect.Length < 4) continue;
+
+                Rect rect = ZoneGeometry.RectOf(zone.rect);
+                if (!rect.Contains(world)) continue;
+
+                float area = rect.width * rect.height;
+                if (area >= bestArea) continue;
+
+                bestArea = area;
+                best = zone;
+            }
+
+            return best;
+        }
+
+        public LevelZone AddZone(Rect rect, string type = "air")
+        {
+            var zone = new LevelZone
+            {
+                id = NextZoneId(),
+                type = type,
+                rect = ZoneGeometry.ToArray(rect),
+                @params = new ZoneParams(),
+                start_state = "on",
+            };
+
+            var zones = new List<LevelZone>(Level.zones ?? new LevelZone[0]) { zone };
+            Level.zones = zones.ToArray();
+
+            SelectZone(zone.id);
+            Dirty = true;
+            return zone;
+        }
+
+        /// <summary>
+        /// Selects a zone, clearing the entity and exit selections.
+        ///
+        /// The three are mutually exclusive because more than the inspector reads them: the
+        /// Delete key tests each independently, so two live selections means one keypress
+        /// destroying two objects.
+        /// </summary>
+        public void SelectZone(string id)
+        {
+            SelectedZoneId = id;
+            SelectedEntityId = null;
+            ExitSelected = false;
+        }
+
+        /// <summary>
+        /// Selects an entity, clearing the zone and exit selections.
+        ///
+        /// The three are mutually exclusive because more than the inspector reads them: the
+        /// Delete key tests each independently, so two live selections means one keypress
+        /// destroying two objects.
+        /// </summary>
+        public void SelectEntity(string id)
+        {
+            SelectedEntityId = id;
+            SelectedZoneId = null;
+            ExitSelected = false;
+        }
+
+        /// <summary>
+        /// One setter for both moving and resizing: the geometry has already decided which
+        /// of the two a given drag was, and two methods would be the same body twice.
+        /// </summary>
+        public void SetZoneRect(string id, Rect rect)
+        {
+            LevelZone zone = FindZone(id);
+            if (zone == null) return;
+
+            zone.rect = ZoneGeometry.ToArray(rect);
+            Dirty = true;
+        }
+
+        public void SetZoneType(string id, string type)
+        {
+            LevelZone zone = FindZone(id);
+            if (zone == null || zone.type == type) return;
+
+            zone.type = type;
+            Dirty = true;
+        }
+
+        public void SetZoneParams(string id, float vx, float vy, float rate)
+        {
+            LevelZone zone = FindZone(id);
+            if (zone == null) return;
+
+            if (zone.@params == null) zone.@params = new ZoneParams();
+
+            zone.@params.vx = vx;
+            zone.@params.vy = vy;
+            zone.@params.rate = rate;
+            Dirty = true;
+        }
+
+        /// <summary>The schema stores this as the string "on" / "off" (level-editor-spec 3).</summary>
+        public void SetZoneEnabled(string id, bool enabled)
+        {
+            LevelZone zone = FindZone(id);
+            if (zone == null) return;
+
+            string state = enabled ? "on" : "off";
+            if (zone.start_state == state) return;
+
+            zone.start_state = state;
+            Dirty = true;
+        }
+
+        public bool DeleteZone(string id)
+        {
+            LevelZone zone = FindZone(id);
+            if (zone == null) return false;
+
+            var zones = new List<LevelZone>(Level.zones);
+            zones.Remove(zone);
+            Level.zones = zones.ToArray();
+
+            if (SelectedZoneId == id) SelectedZoneId = null;
+            Dirty = true;
+            return true;
+        }
+
+        /// <summary>Lowest unused zNN id, matching how entity ids are allocated.</summary>
+        string NextZoneId()
+        {
+            for (int i = 1; i < 1000; i++)
+            {
+                string candidate = "z" + i.ToString("00");
+                if (FindZone(candidate) == null) return candidate;
+            }
+
+            return "z" + Level.zones.Length;
+        }
+
         // -------------------------------------------------------------------- exit
 
         /// <summary>The gate as the sim sees it, so the editor and the game agree on it.</summary>
@@ -335,6 +511,7 @@ namespace KeepyUppy.LevelEditing
         {
             ExitSelected = true;
             SelectedEntityId = null;
+            SelectedZoneId = null;
         }
 
         public void MoveExit(Vector2 world)

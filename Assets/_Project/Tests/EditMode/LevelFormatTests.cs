@@ -1,4 +1,5 @@
 using System.IO;
+using KeepyUppy.LevelEditing;
 using KeepyUppy.Runtime;
 using KeepyUppy.Sim;
 using KeepyUppy.Sim.Level;
@@ -263,6 +264,43 @@ namespace KeepyUppy.SimTests
                 b.Tick();
                 SimSnapshot.Capture(a).AssertMatches(SimSnapshot.Capture(b), $"step {i}");
             }
+        }
+
+        [Test]
+        public void AZoneAuthoredInTheEditorSurvivesASaveAndReload()
+        {
+            var session = new EditorSession();
+            LevelZone authored = session.AddZone(new Rect(20f, 1f, 6f, 10f));
+            authored.@params.vx = 1.5f;
+            authored.@params.vy = 4.5f;
+            authored.start_state = "off";
+
+            string json = JsonUtility.ToJson(session.Flush(), true);
+            LevelData reloaded = JsonUtility.FromJson<LevelData>(json);
+
+            Assert.AreEqual(1, reloaded.zones.Length);
+
+            LevelZone zone = reloaded.zones[0];
+            Assert.AreEqual("z01", zone.id);
+            Assert.AreEqual("air", zone.type);
+            Assert.AreEqual(new[] { 20f, 1f, 6f, 10f }, zone.rect);
+            Assert.AreEqual(1.5f, zone.@params.vx, 1e-5f);
+            Assert.AreEqual(4.5f, zone.@params.vy, 1e-5f);
+            Assert.AreEqual("off", zone.start_state);
+        }
+
+        [Test]
+        public void FlushDoesNotDropZonesWhileWritingTiles()
+        {
+            // Flush exists to write the working grid back into the level. Nothing else it
+            // touches may be lost on the way through.
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+
+            session.Grid[3, 3] = TileKind.Solid;
+            LevelData flushed = session.Flush();
+
+            Assert.AreEqual(1, flushed.zones.Length, "flushing tiles must not disturb zones");
         }
     }
 }

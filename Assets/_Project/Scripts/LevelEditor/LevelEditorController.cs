@@ -36,12 +36,49 @@ namespace KeepyUppy.LevelEditing
         int _draggingWaypoint = -1;
         string _lastSelected;
 
+        /// <summary>Which corner handle the current drag has hold of, if any.</summary>
+        ZoneCorner _zoneCorner;
+
+        /// <summary>Cursor-to-bottom-left offset, so a moved zone does not jump to the cursor.</summary>
+        Vector2 _zoneDragOffset;
+
+        /// <summary>Drag-in-progress creates a zone rather than moving one.</summary>
+        bool _zoneCreating;
+
+        /// <summary>
+        /// N has armed the next drag to create, even inside an existing zone. One-shot:
+        /// overlapping zones are a supported design (GDD 6.2 — they sum), so there has to be
+        /// a way to draw one on top of another, but it must not be the default or every
+        /// attempt to nudge a zone would spawn a new one.
+        /// </summary>
+        bool _zoneForceNew;
+
+        /// <summary>
+        /// The tile the current resize pivots around, captured once at mouse-down.
+        ///
+        /// Recomputing it from the live rect each frame moves the anchor the moment a drag
+        /// crosses it: the rect flips correctly on the first frame, then re-anchors to the
+        /// corner under the cursor and collapses into a band trailing it.
+        /// </summary>
+        Vector2Int _zoneAnchor;
+
         // Overlays
         bool _showPanel = true;
         bool _showGrid = true;
         bool _showHitboxes;
         bool _showSafeArea;
         bool _showBrowser;
+
+        /// <summary>
+        /// Draws the inspector against the left edge instead of the right.
+        ///
+        /// The room fills the screen, so the panel always covers part of it, and PointerOverUi
+        /// deliberately swallows clicks underneath it - otherwise a click on the panel would
+        /// also edit whatever it is sitting on top of. That makes anything behind the panel
+        /// unreachable, so the panel has to be movable. Flipping sides is the whole of it:
+        /// park it over the half of the room you are not working on.
+        /// </summary>
+        bool _inspectorOnLeft;
         Rect _browserRect;
         Vector2 _browserScroll;
         string _newLevelId = "w1_02";
@@ -130,7 +167,9 @@ namespace KeepyUppy.LevelEditing
 
             if (Session.Mode == EditorMode.Play) return;
 
-            string selection = Session.ExitSelected ? "@exit" : Session.SelectedEntityId;
+            string selection = Session.ExitSelected
+                ? "@exit"
+                : Session.SelectedZoneId ?? Session.SelectedEntityId;
             if (selection != _lastSelected)
             {
                 _lastSelected = selection;
@@ -156,8 +195,19 @@ namespace KeepyUppy.LevelEditing
             if (kb.digit1Key.wasPressedThisFrame) Session.Tool = EditorTool.Paint;
             if (kb.digit2Key.wasPressedThisFrame) Session.Tool = EditorTool.RectFill;
             if (kb.digit3Key.wasPressedThisFrame) Session.Tool = EditorTool.Select;
+            if (kb.digit4Key.wasPressedThisFrame) Session.Tool = EditorTool.Zone;
             if (kb.digit5Key.wasPressedThisFrame) Session.Tool = EditorTool.Path;
             if (kb.pKey.wasPressedThisFrame) Session.Tool = EditorTool.Place;
+
+            if (Session.Tool != EditorTool.Zone) _zoneForceNew = false;
+
+            // A toggle, not a one-way arm, so it can be cancelled without Escape - which is
+            // the shell's Back (KeyboardShellInput) and reserved by CLAUDE.md's keybind list.
+            if (kb.nKey.wasPressedThisFrame && Session.Tool == EditorTool.Zone)
+            {
+                _zoneForceNew = !_zoneForceNew;
+                _status = _zoneForceNew ? "new zone: drag to place" : "cancelled";
+            }
 
             if (kb.uKey.wasPressedThisFrame) _showPanel = !_showPanel;
             if (kb.gKey.wasPressedThisFrame) _showGrid = !_showGrid;
@@ -165,12 +215,27 @@ namespace KeepyUppy.LevelEditing
             if (kb.tKey.wasPressedThisFrame) _showSafeArea = !_showSafeArea;
             if (kb.lKey.wasPressedThisFrame) _showBrowser = !_showBrowser;
 
+            if (kb.iKey.wasPressedThisFrame)
+            {
+                _inspectorOnLeft = !_inspectorOnLeft;
+                _status = _inspectorOnLeft ? "inspector left" : "inspector right";
+            }
+
             if (kb.deleteKey.wasPressedThisFrame && Session.SelectedEntityId != null)
             {
                 Session.BeginEdit();
                 Session.DeleteEntity(Session.SelectedEntityId);
-                SyncEntities();
+                SyncDynamic();
                 _status = "deleted entity";
+            }
+
+            if (kb.deleteKey.wasPressedThisFrame && Session.Tool == EditorTool.Zone
+                && Session.SelectedZoneId != null)
+            {
+                Session.BeginEdit();
+                Session.DeleteZone(Session.SelectedZoneId);
+                SyncDynamic();
+                _status = "deleted zone";
             }
         }
 
@@ -200,6 +265,7 @@ namespace KeepyUppy.LevelEditing
                 case EditorTool.Paint: PaintTool(mouse, tile); break;
                 case EditorTool.RectFill: RectTool(mouse, tile); break;
                 case EditorTool.Select: SelectTool(mouse, world); break;
+                case EditorTool.Zone: ZoneTool(mouse, world); break;
                 case EditorTool.Path: PathTool(mouse, world); break;
                 case EditorTool.Place: PlaceTool(mouse, world); break;
             }
@@ -238,8 +304,7 @@ namespace KeepyUppy.LevelEditing
                 LevelEntity hit = Session.EntityAt(world);
                 if (hit != null)
                 {
-                    Session.SelectedEntityId = hit.id;
-                    Session.ExitSelected = false;
+                    Session.SelectEntity(hit.id);
                     _entityDragOffset = new Vector2(hit.pos[0], hit.pos[1]) - world;
                     Session.BeginEdit();
                     _dragging = true;
@@ -255,8 +320,7 @@ namespace KeepyUppy.LevelEditing
                 }
                 else
                 {
-                    Session.SelectedEntityId = null;
-                    Session.ExitSelected = false;
+                    Session.SelectEntity(null);
                 }
             }
 
@@ -274,7 +338,103 @@ namespace KeepyUppy.LevelEditing
             if (Session.SelectedEntityId == null) return;
 
             Session.MoveEntity(Session.SelectedEntityId, world + _entityDragOffset);
-            SyncEntities();
+            SyncDynamic();
+        }
+
+        /// <summary>
+        /// Draw, move, resize and delete zones (level-editor-spec 4, tool 4).
+        ///
+        /// Mouse-down chooses between three drags: a handle of the selected zone resizes, the
+        /// interior of a zone moves it, and empty space creates one. N overrides the middle
+        /// case so a zone can be drawn on top of another.
+        /// </summary>
+        void ZoneTool(Mouse mouse, Vector2 world)
+        {
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                LevelZone hit = Session.ZoneAt(world);
+                if (hit != null)
+                {
+                    Session.BeginEdit();
+                    Session.DeleteZone(hit.id);
+                    SyncDynamic();
+                    _status = "deleted zone";
+                }
+
+                return;
+            }
+
+            if (mouse.leftButton.wasPressedThisFrame)
+            {
+                LevelZone selected = Session.FindZone(Session.SelectedZoneId);
+
+                // Handles belong to the selected zone alone. Every zone showing handles at
+                // once is unreadable in a room with several.
+                _zoneCorner = selected?.rect != null
+                    ? ZoneGeometry.HandleAt(ZoneGeometry.RectOf(selected.rect), world, ZoneHandleRadius)
+                    : ZoneCorner.None;
+
+                LevelZone hit = _zoneForceNew ? null : Session.ZoneAt(world);
+
+                if (_zoneCorner != ZoneCorner.None)
+                {
+                    _zoneAnchor = ZoneGeometry.AnchorOf(ZoneGeometry.RectOf(selected.rect), _zoneCorner);
+                    Session.BeginEdit();
+                    _zoneCreating = false;
+                    _dragging = true;
+                }
+                else if (hit != null)
+                {
+                    Session.SelectZone(hit.id);
+                    Rect rect = ZoneGeometry.RectOf(hit.rect);
+                    _zoneDragOffset = new Vector2(rect.xMin, rect.yMin) - world;
+                    Session.BeginEdit();
+                    _zoneCreating = false;
+                    _dragging = true;
+                }
+                else
+                {
+                    _dragStart = GridCursor.ToTile(world);
+                    _zoneCreating = true;
+                    _dragging = true;
+                }
+            }
+
+            if (!_dragging) return;
+
+            if (_zoneCreating)
+            {
+                if (!mouse.leftButton.wasReleasedThisFrame) return;
+
+                Session.BeginEdit();
+                LevelZone created = Session.AddZone(ZoneGeometry.Normalise(_dragStart, GridCursor.ToTile(world)));
+                SyncDynamic();
+
+                _dragging = false;
+                _zoneCreating = false;
+                _zoneForceNew = false;
+                _status = $"added {created.id}";
+                return;
+            }
+
+            LevelZone dragged = Session.FindZone(Session.SelectedZoneId);
+            if (dragged?.rect == null) { _dragging = false; return; }
+
+            Rect current = ZoneGeometry.RectOf(dragged.rect);
+
+            Rect updated = _zoneCorner != ZoneCorner.None
+                ? ZoneGeometry.Normalise(_zoneAnchor, GridCursor.ToTile(world))
+                : ZoneGeometry.Move(current, world + _zoneDragOffset);
+
+            Session.SetZoneRect(dragged.id, updated);
+            SyncDynamic();
+
+            if (mouse.leftButton.wasReleasedThisFrame)
+            {
+                _status = _zoneCorner != ZoneCorner.None ? "resized zone" : "moved zone";
+                _dragging = false;
+                _zoneCorner = ZoneCorner.None;
+            }
         }
 
         /// <summary>
@@ -287,7 +447,7 @@ namespace KeepyUppy.LevelEditing
 
             Session.BeginEdit();
             LevelEntity placed = Session.PlaceEntity(_entityType, world);
-            SyncEntities();
+            SyncDynamic();
             _status = $"placed {placed.type} {placed.id}";
         }
 
@@ -308,7 +468,7 @@ namespace KeepyUppy.LevelEditing
                 if (mouse.leftButton.wasPressedThisFrame)
                 {
                     LevelEntity hit = Session.EntityAt(world);
-                    Session.SelectedEntityId = hit?.id;
+                    Session.SelectEntity(hit?.id);
                     _status = hit == null ? "select an entity to give it a path" : $"editing {hit.id} path";
                 }
                 return;
@@ -321,7 +481,7 @@ namespace KeepyUppy.LevelEditing
                 {
                     Session.BeginEdit();
                     Session.DeleteWaypoint(id, index);
-                    SyncEntities();
+                    SyncDynamic();
                     _status = "removed waypoint";
                 }
                 return;
@@ -339,7 +499,7 @@ namespace KeepyUppy.LevelEditing
                     _status = "added waypoint";
                 }
 
-                SyncEntities();
+                SyncDynamic();
             }
 
             if (mouse.leftButton.wasReleasedThisFrame) _draggingWaypoint = -1;
@@ -347,7 +507,7 @@ namespace KeepyUppy.LevelEditing
             if (_draggingWaypoint >= 0 && mouse.leftButton.isPressed)
             {
                 Session.MoveWaypoint(id, _draggingWaypoint, world);
-                SyncEntities();
+                SyncDynamic();
             }
         }
 
@@ -355,7 +515,7 @@ namespace KeepyUppy.LevelEditing
         /// Pushes entity and zone edits into the running world so they are visible at once.
         /// Geometry, spawns and the paused run are left alone — this is not a reload.
         /// </summary>
-        void SyncEntities() => Host.SyncEntities(Session.Level);
+        void SyncDynamic() => Host.SyncDynamic(Session.Level);
 
         /// <summary>The gate lives on the world, not the entity list, so it syncs its own way.</summary>
         void SyncExit() => Host.SyncExit(Session.Level);
@@ -413,7 +573,7 @@ namespace KeepyUppy.LevelEditing
         {
             if (!Session.UndoEdit()) return false;
 
-            SyncEntities();
+            SyncDynamic();
             return true;
         }
 
@@ -421,7 +581,7 @@ namespace KeepyUppy.LevelEditing
         {
             if (!Session.RedoEdit()) return false;
 
-            SyncEntities();
+            SyncDynamic();
             return true;
         }
 
@@ -585,6 +745,7 @@ namespace KeepyUppy.LevelEditing
             if (GUILayout.Button("1 Paint", GUILayout.Width(70f))) Session.Tool = EditorTool.Paint;
             if (GUILayout.Button("2 Rect", GUILayout.Width(70f))) Session.Tool = EditorTool.RectFill;
             if (GUILayout.Button("3 Select", GUILayout.Width(70f))) Session.Tool = EditorTool.Select;
+            if (GUILayout.Button("4 Zone", GUILayout.Width(70f))) Session.Tool = EditorTool.Zone;
             if (GUILayout.Button("5 Path", GUILayout.Width(70f))) Session.Tool = EditorTool.Path;
             if (GUILayout.Button("P Place", GUILayout.Width(70f))) Session.Tool = EditorTool.Place;
             GUILayout.Space(20f);
@@ -615,7 +776,7 @@ namespace KeepyUppy.LevelEditing
             {
                 Session.BeginEdit();
                 Session.PlaceEntity(_entityType, new Vector2(TileGrid.Width * 0.5f, TileGrid.Height * 0.5f));
-                SyncEntities();
+                SyncDynamic();
                 _status = $"placed {_entityType}";
             }
             GUILayout.EndHorizontal();
@@ -631,8 +792,24 @@ namespace KeepyUppy.LevelEditing
         /// Built from EntityFields rather than hand-written per hazard, so a new entity type
         /// appears here with no UI code — the same reasoning as GDD 5.1's verb layer.
         /// </summary>
+        /// <summary>
+        /// Where the inspector sits, on whichever edge is currently out of the way. Every
+        /// inspector goes through this: they share one rect, and PointerOverUi reads it to
+        /// keep a click on the panel from reaching the room behind it.
+        /// </summary>
+        Rect InspectorRect(float height)
+            => new Rect(_inspectorOnLeft ? 8f : Screen.width - 252f, 60f, 244f, height);
+
         void DrawInspector()
         {
+            // Before the exit and entity branches: the zone tool has its own selection, and
+            // reaching the entity inspector's early returns would mean never drawing at all.
+            if (Session.Tool == EditorTool.Zone && Session.SelectedZoneId != null)
+            {
+                DrawZoneInspector();
+                return;
+            }
+
             if (Session.ExitSelected) { DrawExitInspector(); return; }
 
             LevelEntity entity = Session.FindEntity(Session.SelectedEntityId);
@@ -640,7 +817,7 @@ namespace KeepyUppy.LevelEditing
             // pos comes from a file that a human may have edited; do not trust its length.
             if (entity?.pos == null || entity.pos.Length < 2) { _inspectorRect = Rect.zero; return; }
 
-            _inspectorRect = new Rect(Screen.width - 252f, 60f, 244f, 400f);
+            _inspectorRect = InspectorRect(400f);
             GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
 
             GUILayout.Label($"{entity.id}   {entity.type}");
@@ -655,7 +832,7 @@ namespace KeepyUppy.LevelEditing
             {
                 Session.BeginEdit();
                 Session.MoveEntity(entity.id, new Vector2(x, y));
-                SyncEntities();
+                SyncDynamic();
             }
 
             EntityParamId[] fields = EntityFields.For(entity.type);
@@ -675,7 +852,7 @@ namespace KeepyUppy.LevelEditing
 
                 Session.BeginEdit();
                 Session.SetParam(entity.id, id, typed);
-                SyncEntities();
+                SyncDynamic();
             }
 
             GUILayout.Space(4f);
@@ -683,6 +860,29 @@ namespace KeepyUppy.LevelEditing
             DrawStateRow(entity);
 
             GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// The selected zone's fields, in its own area.
+        ///
+        /// A sibling of DrawExitInspector rather than a section inside the entity inspector:
+        /// the zone selection is independent of the entity one, so sharing that method's body
+        /// would mean the panel only appeared when an entity happened to be selected too.
+        ///
+        /// Setting _inspectorRect is load-bearing, not bookkeeping — PointerOverUi reads it to
+        /// keep a click on the panel from falling through to the canvas and editing the zone
+        /// underneath.
+        /// </summary>
+        void DrawZoneInspector()
+        {
+            _inspectorRect = InspectorRect(320f);
+            GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
+
+            bool changed = ZoneInspector.Draw(Session, _fieldText);
+
+            GUILayout.EndArea();
+
+            if (changed) SyncDynamic();
         }
 
         /// <summary>
@@ -695,7 +895,7 @@ namespace KeepyUppy.LevelEditing
             LevelExit exit = Session.Level.exit;
             if (exit?.pos == null || exit.pos.Length < 2) { _inspectorRect = Rect.zero; return; }
 
-            _inspectorRect = new Rect(Screen.width - 252f, 60f, 244f, 200f);
+            _inspectorRect = InspectorRect(200f);
             GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
 
             GUILayout.Label("exit");
@@ -779,7 +979,7 @@ namespace KeepyUppy.LevelEditing
 
             Session.BeginEdit();
             Session.SetEntityType(entity.id, types[index]);
-            SyncEntities();
+            SyncDynamic();
             _status = $"{entity.id} is now a {types[index]}";
         }
 
@@ -797,14 +997,14 @@ namespace KeepyUppy.LevelEditing
                                                      % EntityFields.PathModes.Length];
                 Session.BeginEdit();
                 Session.SetPathMode(entity.id, next);
-                SyncEntities();
+                SyncDynamic();
             }
 
             if (count > 0 && GUILayout.Button("clear", GUILayout.Width(50f)))
             {
                 Session.BeginEdit();
                 for (int i = count; i > 0; i--) Session.DeleteWaypoint(entity.id, i);
-                SyncEntities();
+                SyncDynamic();
                 _status = "cleared path";
             }
 
@@ -818,7 +1018,7 @@ namespace KeepyUppy.LevelEditing
 
             Session.BeginEdit();
             Session.SetPhase(entity.id, phase);
-            SyncEntities();
+            SyncDynamic();
         }
 
         void DrawStateRow(LevelEntity entity)
@@ -831,14 +1031,14 @@ namespace KeepyUppy.LevelEditing
                 string next = entity.start_state == "dormant" ? "active" : "dormant";
                 Session.BeginEdit();
                 Session.SetStartState(entity.id, next);
-                SyncEntities();
+                SyncDynamic();
             }
 
             if (GUILayout.Button("delete", GUILayout.Width(60f)))
             {
                 Session.BeginEdit();
                 Session.DeleteEntity(entity.id);
-                SyncEntities();
+                SyncDynamic();
                 _status = "deleted entity";
             }
 
@@ -988,6 +1188,7 @@ namespace KeepyUppy.LevelEditing
         {
             if (_showGrid) DrawGrid();
             if (_showSafeArea) DrawSafeArea();
+            DrawZones();
             if (_showHitboxes) DrawHitboxes();
             DrawEntities();
         }
@@ -1151,6 +1352,69 @@ namespace KeepyUppy.LevelEditing
             Vector3 screen = Host.Camera.WorldToScreenPoint(world);
             return new Vector2(screen.x, Screen.height - screen.y);
         }
+
+        /// <summary>Handle hit radius in world units — about 4 px at 20 px/metre.</summary>
+        const float ZoneHandleRadius = 0.35f;
+
+        /// <summary>
+        /// Every zone in the level, whatever its type.
+        ///
+        /// Drawn from Session.Level.zones rather than from the world's AirField, because
+        /// LevelLoader.LoadZones admits only type "air" — the five inert types never reach
+        /// the field, so a view reading it could never show them, and a zone that cannot be
+        /// seen cannot be selected or edited. ZoneViewSync still draws the air zones in play;
+        /// this is the authoring view.
+        /// </summary>
+        void DrawZones()
+        {
+            if (Session.Level.zones == null) return;
+
+            foreach (LevelZone zone in Session.Level.zones)
+            {
+                if (zone?.rect == null || zone.rect.Length < 4) continue;
+
+                Rect rect = ZoneGeometry.RectOf(zone.rect);
+                bool selected = zone.id == Session.SelectedZoneId;
+                bool off = zone.start_state == "off";
+
+                // An off zone is dimmed rather than hidden: hiding it would make it
+                // impossible to select, and so impossible to switch back on.
+                Color fill = ZoneFill(zone.type);
+                if (off) fill.a *= 0.4f;
+
+                DrawWorldRect(rect, fill);
+
+                if (!selected) continue;
+
+                Color edge = new Color(1f, 1f, 1f, 0.8f);
+                DrawWorldRect(new Rect(rect.xMin, rect.yMax - 0.05f, rect.width, 0.05f), edge);
+                DrawWorldRect(new Rect(rect.xMin, rect.yMin, rect.width, 0.05f), edge);
+                DrawWorldRect(new Rect(rect.xMin, rect.yMin, 0.05f, rect.height), edge);
+                DrawWorldRect(new Rect(rect.xMax - 0.05f, rect.yMin, 0.05f, rect.height), edge);
+
+                DrawHandle(new Vector2(rect.xMin, rect.yMin));
+                DrawHandle(new Vector2(rect.xMax, rect.yMin));
+                DrawHandle(new Vector2(rect.xMin, rect.yMax));
+                DrawHandle(new Vector2(rect.xMax, rect.yMax));
+            }
+        }
+
+        void DrawHandle(Vector2 corner)
+        {
+            const float r = ZoneHandleRadius;
+            DrawWorldRect(new Rect(corner.x - r * 0.5f, corner.y - r * 0.5f, r, r),
+                          new Color(1f, 1f, 1f, 0.9f));
+        }
+
+        /// <summary>
+        /// Air borrows the fan's blue, so wind looks like wind wherever it comes from. The
+        /// inert types get a flat grey: they do nothing, and dressing them in a colour that
+        /// suggests they do would be a lie. Never the reserved hazard hue (GDD 13.1).
+        /// </summary>
+        static Color ZoneFill(string type)
+            => type == "air"
+                ? new Color(0.45f, 0.65f, 0.75f, 0.30f)
+                : new Color(0.55f, 0.55f, 0.60f, 0.22f);
 
         void DrawWorldRect(Rect worldRect, Color colour)
         {

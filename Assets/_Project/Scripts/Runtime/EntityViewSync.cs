@@ -19,7 +19,11 @@ namespace KeepyUppy.Runtime
     {
         public SimWorld World;
 
+        /// <summary>Optional, as on <see cref="BalloonView"/>: absent means no interpolation.</summary>
+        public SimDriver Driver;
+
         readonly List<GameObject> _views = new List<GameObject>();
+        readonly List<StepInterpolator> _interps = new List<StepInterpolator>();
         int _seenCount = -1;
 
         void LateUpdate()
@@ -28,30 +32,52 @@ namespace KeepyUppy.Runtime
 
             if (World.Entities.Count != _seenCount) Rebuild();
 
+            float alpha = Driver != null ? Driver.Alpha : 1f;
+
             for (int i = 0; i < World.Entities.Count && i < _views.Count; i++)
             {
                 SimEntity entity = World.Entities[i];
                 GameObject view = _views[i];
 
                 // Do not pixel-snap: these are moving entities the player is tracking
-                // (CLAUDE.md rendering note).
-                Vector2 centre = Centre(entity);
+                // (CLAUDE.md rendering note). Interpolated between fixed steps for the same
+                // reason — a saw crossing the room is tracked as closely as the balloon.
+                Vector2 centre = Driver != null && i < _interps.Count
+                    ? _interps[i].Sample(alpha)
+                    : Centre(entity);
 
                 view.transform.localPosition = new Vector3(centre.x, centre.y, -0.5f);
                 view.SetActive(entity.Active);
             }
         }
 
+        /// <summary>One sample per fixed step - see <see cref="BalloonView"/>.</summary>
+        void FixedUpdate()
+        {
+            if (World == null || Driver == null) return;
+
+            // Grown here as well as in Rebuild: the editor adds entities while the level is
+            // running, and a fixed step can land before the next LateUpdate has noticed.
+            while (_interps.Count < World.Entities.Count) _interps.Add(new StepInterpolator());
+
+            int clockStep = Driver.World.Clock.Step;
+
+            for (int i = 0; i < World.Entities.Count; i++)
+                _interps[i].Sync(clockStep, Centre(World.Entities[i]));
+        }
+
         void Rebuild()
         {
             foreach (GameObject view in _views) Destroy(view);
             _views.Clear();
+            _interps.Clear();
 
             for (int i = 0; i < World.Entities.Count; i++)
             {
                 SimEntity entity = World.Entities[i];
                 _views.Add(QuadView.Create(transform, $"entity_{entity.Id}",
                                            Colour(entity.Kind), Centre(entity), Size(entity), -0.5f));
+                _interps.Add(new StepInterpolator());
             }
 
             _seenCount = World.Entities.Count;

@@ -610,6 +610,16 @@ Each world changes only the background hue and the prop set. A new world therefo
 
 **Do not pixel-snap moving entities.** At 20 px/metre a Nominal balloon falls 0.67 px per frame; snapping produces visible judder on exactly the object the player is tracking. Snap the tile grid only. Balloon, props and moving hazards render at sub-pixel positions.
 
+**Interpolate moving entities between fixed steps.** Added 2026-08-28.
+
+The same 0.67 px per frame is why the *clock* cannot be snapped either. The sim advances only in FixedUpdate at 60 Hz (§6.1) and the display is not phase-locked to it, so a view that samples the sim position raw on a render frame draws the previous step again on some frames and jumps two steps on others. The apparent velocity fluctuates, and on a slowly descending balloon it reads as bouncing off invisible platforms in mid-air — which is exactly how it was reported.
+
+`StepInterpolator` (`Assets/_Project/Scripts/Runtime/StepInterpolator.cs`) draws between the two most recent steps. It takes **one sample per fixed step, not one per render frame** — pairing a render-frame sample with a fixed-step alpha puts a two-step jump against a one-step fraction on precisely the frames where the two clocks drift past each other, which reintroduces the hitch exactly where it hurts. That mistake was made and caught by `StepInterpolatorTests.ASteadyDescent_*`, which measures frame-to-frame gaps and fails on a 143× swing.
+
+Two cases snap instead of tweening: the first sample, and a restart — detected by the world's step counter running backwards, since tweening across a respawn would drag the balloon over the room on the exact 200 ms path §8 wants to feel instant.
+
+This is presentation only, and the simulation cannot observe it — the same rule `TimeControl` follows. Determinism is untouched. The cost is that the picture lags the sim by up to one step (16.7 ms), which is the standard trade for a fixed-timestep renderer; extrapolating forward instead would invent positions the sim never had and overshoot through walls on the frame a bounce lands.
+
 ### 13.3 Placeholder pipeline
 
 Solid colour blocks on the final grid, with the reserved-colour rule enforced from day one. Hand-drawn sprites and animation drop in later without a layout pass. **Do not do an art pass before the control scheme decision (§5.3) is settled.**

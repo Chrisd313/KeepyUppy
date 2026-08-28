@@ -11,7 +11,13 @@ namespace KeepyUppy.Runtime
     /// integrates with SimClock.Dt regardless of the project's timestep setting, so this
     /// aligns Unity to the sim rather than the other way round.
     /// </summary>
+    /// <remarks>
+    /// Ordered ahead of every view so that a view's own FixedUpdate - where
+    /// <see cref="StepInterpolator"/> takes its one sample per step - reads the position
+    /// after this step ran, not before it.
+    /// </remarks>
     [DisallowMultipleComponent]
+    [DefaultExecutionOrder(-100)]
     public sealed class SimDriver : MonoBehaviour
     {
         public SimWorld World { get; } = new SimWorld();
@@ -79,6 +85,13 @@ namespace KeepyUppy.Runtime
         // comment on the same fact), so this is a fixed-step counter passed to
         // TimeControl.StepsFor - never assume it advances once per render frame.
         int _fixedStep;
+
+        /// <summary>
+        /// How far the current render frame sits into the step that has not run yet, for the
+        /// views that interpolate. Rendering reads this; the simulation has no access to it,
+        /// exactly as with <see cref="TimeControl"/>.
+        /// </summary>
+        public float Alpha => StepInterpolator.AlphaOf(Time.time, Time.fixedTime, Time.fixedDeltaTime);
 
         void FixedUpdate()
         {
