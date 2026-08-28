@@ -21,6 +21,16 @@ namespace KeepyUppy.Sim.Entities
 
         /// <summary>Owns an air zone. Hazard when on, tool when switchable (GDD 9.2).</summary>
         Fan,
+
+        /// <summary>
+        /// A retractable spike bar (GDD 9.3). A capsule like the lamp's, but lethal on
+        /// contact and to both bodies — every tile spike kills the player, and a bar that did
+        /// not would be a lie told by the same sprite.
+        ///
+        /// Spikes stay tiles for static geometry; this exists because a trigger needs an id
+        /// to link to, and a tile has none.
+        /// </summary>
+        SpikeBar,
     }
 
     /// <summary>How an entity walks its path. Maps to the schema's path_mode.</summary>
@@ -55,6 +65,12 @@ namespace KeepyUppy.Sim.Entities
         public const float FanLength = 6.0f;
         public const float FanPower = 8.0f;
         public const float FanAngle = 90f;
+
+        public const float SpikeBarRadius = 0.25f;
+        public const float SpikeBarLength = 1.0f;
+
+        /// <summary>Up out of the floor. The common case, so it is the default.</summary>
+        public const float SpikeBarAngle = 90f;
 
         public static float Or(float value, float fallback) => value > 0f ? value : fallback;
     }

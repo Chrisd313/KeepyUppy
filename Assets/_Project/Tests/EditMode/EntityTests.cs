@@ -444,5 +444,65 @@ namespace KeepyUppy.SimTests
             world.Restart();
             Assert.AreEqual(0, lamp.ExposureFrames, "exposure survived a restart");
         }
+
+        [Test]
+        public void SpikeBar_IsACapsuleThatKillsBoth()
+        {
+            SimEntity bar = EntityFactory.Create(new LevelEntity
+            {
+                id = "s01", type = "spike_bar",
+                pos = new[] { 10f, 1f },
+                @params = new EntityParams { radius = 0.3f, length = 2f, angle = 90f },
+            });
+
+            Assert.AreEqual(EntityKind.SpikeBar, bar.Kind);
+            Assert.IsTrue(bar.KillsOnContact, "a spike bar is instantly lethal");
+            Assert.IsTrue(bar.KillsPlayer, "every tile spike kills the player; so does this");
+
+            bar.Place(0);
+
+            // The capsule runs from the entity along its angle for its length, as a lamp's does.
+            Assert.AreEqual(10f, bar.KillEnd.x, 0.001f);
+            Assert.AreEqual(3f, bar.KillEnd.y, 0.001f);
+
+            Assert.IsTrue(bar.OverlapsCircle(new Vector2(10f, 2.5f), 0.2f, 0f), "tip of the bar");
+            Assert.IsFalse(bar.OverlapsCircle(new Vector2(10f, 5f), 0.2f, 0f), "well clear of it");
+        }
+
+        [Test]
+        public void SpikeBar_Dormant_IsHarmlessUntilArmed()
+        {
+            var field = new EntityField();
+            var air = new AirField();
+
+            SimEntity bar = EntityFactory.Create(new LevelEntity
+            {
+                id = "s01", type = "spike_bar",
+                pos = new[] { 10f, 1f },
+                @params = new EntityParams { radius = 0.3f, length = 2f, angle = 90f },
+                start_state = "dormant",
+            });
+            field.Add(bar, air);
+            field.Step(0, air);
+
+            Assert.IsFalse(field.ResolveBalloon(new Vector2(10f, 2.5f), 0.2f, 0f), "dormant");
+
+            field.SetActive("s01", true);
+            Assert.IsTrue(field.ResolveBalloon(new Vector2(10f, 2.5f), 0.2f, 0f), "armed");
+        }
+
+        [Test]
+        public void SpikeBar_UnsetParams_FallBackToDefaults()
+        {
+            SimEntity bar = EntityFactory.Create(new LevelEntity
+            {
+                id = "s01", type = "spike_bar", pos = new[] { 4f, 1f },
+                @params = new EntityParams(),
+            });
+
+            Assert.AreEqual(EntityDefaults.SpikeBarRadius, bar.Radius, 0.0001f);
+            Assert.AreEqual(EntityDefaults.SpikeBarLength, bar.Length, 0.0001f);
+            Assert.AreEqual(EntityDefaults.SpikeBarAngle, bar.Angle, 0.0001f);
+        }
     }
 }

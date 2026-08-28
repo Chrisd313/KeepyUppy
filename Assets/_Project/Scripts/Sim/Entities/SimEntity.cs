@@ -79,7 +79,9 @@ namespace KeepyUppy.Sim.Entities
                 ? EntityPath.Evaluate(Points, Mode, Speed, Phase, step)
                 : Points[0];
 
-            KillEnd = Kind == EntityKind.Lamp
+            // A lamp's beam and a spike bar's shaft are both capsules with length; everything
+            // else is a point. One shape keeps the GDD 8 shrink at a single call site.
+            KillEnd = Kind == EntityKind.Lamp || Kind == EntityKind.SpikeBar
                 ? Position + Direction() * Length
                 : Position;
         }
@@ -91,10 +93,10 @@ namespace KeepyUppy.Sim.Entities
         }
 
         /// <summary>Instantly lethal on contact. A lamp is not — it needs time (GDD 9.2).</summary>
-        public bool KillsOnContact => Kind == EntityKind.Saw;
+        public bool KillsOnContact => Kind == EntityKind.Saw || Kind == EntityKind.SpikeBar;
 
-        /// <summary>GDD 4.1: the balloon dies to almost anything; the player only to blades.</summary>
-        public bool KillsPlayer => Kind == EntityKind.Saw;
+        /// <summary>GDD 4.1: the balloon dies to almost anything; the player only to blades and spikes.</summary>
+        public bool KillsPlayer => Kind == EntityKind.Saw || Kind == EntityKind.SpikeBar;
 
         /// <summary>
         /// The capsule against a circle, inset by the GDD 8 fairness shrink.

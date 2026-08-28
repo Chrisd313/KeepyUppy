@@ -19,6 +19,7 @@ namespace KeepyUppy.Sim.Level
                 case "saw":  return EntityKind.Saw;
                 case "lamp": return EntityKind.Lamp;
                 case "fan":  return EntityKind.Fan;
+                case "spike_bar": return EntityKind.SpikeBar;
                 default:     return EntityKind.Unknown;
             }
         }
@@ -30,6 +31,7 @@ namespace KeepyUppy.Sim.Level
                 case EntityKind.Saw:  return "saw";
                 case EntityKind.Lamp: return "lamp";
                 case EntityKind.Fan:  return "fan";
+                case EntityKind.SpikeBar: return "spike_bar";
                 default:              return "";
             }
         }
@@ -86,6 +88,13 @@ namespace KeepyUppy.Sim.Level
                     entity.Length = EntityDefaults.Or(p.length, EntityDefaults.FanLength);
                     entity.Angle = p.angle != 0f ? p.angle : EntityDefaults.FanAngle;
                     entity.Power = EntityDefaults.Or(p.power, EntityDefaults.FanPower);
+                    entity.Speed = p.speed;
+                    break;
+
+                case EntityKind.SpikeBar:
+                    entity.Radius = EntityDefaults.Or(p.radius, EntityDefaults.SpikeBarRadius);
+                    entity.Length = EntityDefaults.Or(p.length, EntityDefaults.SpikeBarLength);
+                    entity.Angle = p.angle != 0f ? p.angle : EntityDefaults.SpikeBarAngle;
                     entity.Speed = p.speed;
                     break;
             }
