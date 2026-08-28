@@ -25,8 +25,15 @@ namespace KeepyUppy.SimTests
             SimWorld fresh = SimTestHelpers.BuildBusyRoom(Seed);
             fresh.Tick(Steps);
 
+            // WinningFrames is excluded here on purpose: it is a record of a completed
+            // attempt, not per-attempt state (see SimSnapshot.AssertMatches), so it is
+            // expected to survive Restart() and this comparison must not read that survival
+            // as a determinism regression. This room never wins, so both sides are 0 == 0
+            // regardless - the exclusion just makes the exemption explicit for whenever that
+            // stops being true.
             SimSnapshot.Capture(fresh)
-                       .AssertMatches(SimSnapshot.Capture(reused), "restarted vs fresh");
+                       .AssertMatches(SimSnapshot.Capture(reused), "restarted vs fresh",
+                                      includeWinningFrames: false);
         }
 
         [Test]

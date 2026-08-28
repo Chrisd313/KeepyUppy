@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using KeepyUppy.Shell.Save;
 using KeepyUppy.Sim;
 using KeepyUppy.Sim.Level;
 using UnityEngine;
@@ -52,12 +53,22 @@ namespace KeepyUppy.Runtime
         FileLevelSource _levelSource;
         LevelIndex _index;
         Camera _camera;
+        SaveService _save;
 
         /// <summary>The level currently being played or edited, or null on the menus.</summary>
         public LevelSession Session { get; private set; }
 
         public ILevelSource Levels => _levelSource;
         public LevelIndex Index => _index;
+
+        /// <summary>
+        /// Progression records. Built at boot and never rebuilt — unlike Session, it is meant
+        /// to stay populated for the rest of the bootstrap's life, on the menus included.
+        /// Callers still null-check it (Bootstrap itself is unassigned until SimBootstrap
+        /// wires it up, and the check is cheap and harmless) — that defensiveness is expected,
+        /// not a sign this promise doesn't hold.
+        /// </summary>
+        public SaveService Save => _save;
 
         /// <summary>
         /// The single sim camera built at boot. Exposed only for BeginEditing (Task 8) — the
@@ -70,6 +81,8 @@ namespace KeepyUppy.Runtime
         {
             LoadTuning();
             PrepareLevelSource();
+
+            _save = new SaveService(new PlayerPrefsSaveStore());
 
             BuildCamera();
             BuildShellView();

@@ -47,6 +47,30 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void SameSeed_WonRoom_WinningFramesMatchAndAreNonZero()
+        {
+            // BuildBusyRoom never wins (it has no exit), so every comparison built from it
+            // asserts WinningFrames as 0 == 0 - structurally covered, never behaviourally
+            // exercised. This room actually completes, so the field means something here.
+            SimWorld a = SimTestHelpers.BuildWinnableRoom(Seed);
+            SimWorld b = SimTestHelpers.BuildWinnableRoom(Seed);
+
+            while (!a.IsWon) a.Tick();
+            while (!b.IsWon) b.Tick();
+
+            Assert.Greater(a.WinningFrames, 0, "the room should have been won");
+            SimSnapshot.Capture(a).AssertMatches(SimSnapshot.Capture(b), "won room");
+
+            // WinningFrames must keep matching through the win-hold too, where it is the only
+            // thing still changing frame to frame - and after the hold expires and Restart()
+            // fires, it must still read the same on both runs (it deliberately survives).
+            a.Tick(SimWorld.WinHoldFrames);
+            b.Tick(SimWorld.WinHoldFrames);
+
+            SimSnapshot.Capture(a).AssertMatches(SimSnapshot.Capture(b), "after win hold");
+        }
+
+        [Test]
         public void DifferentSeed_ProducesDifferentPath()
         {
             // Guards the opposite failure: a seed that is plumbed but ignored would make

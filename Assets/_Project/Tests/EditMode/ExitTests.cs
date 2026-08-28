@@ -114,6 +114,39 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void TheWinRecordsHowManyStepsTheWinningAttemptTook()
+        {
+            SimWorld world = Room(Ring(new Vector2(16f, 12f), 1.6f), new Vector2(16f, 14f), 0.5f);
+
+            int ticked = 0;
+            while (!world.IsWon && ticked < 600)
+            {
+                world.Tick();
+                ticked++;
+            }
+
+            Assert.IsTrue(world.IsWon, "the room should have been won");
+            Assert.AreEqual(ticked, world.WinningFrames,
+                            "the record is the duration of the attempt, counting the winning step");
+        }
+
+        [Test]
+        public void TheWinningTimeSurvivesTheRestart()
+        {
+            // Clock resets every attempt, so the record has to outlive it the way WinCount and
+            // WinningTouches already do - otherwise the number is gone before anyone reads it.
+            SimWorld world = Room(Ring(new Vector2(16f, 12f), 1.6f), new Vector2(16f, 14f), 0.5f);
+
+            while (!world.IsWon) world.Tick();
+            int won = world.WinningFrames;
+
+            world.Tick(SimWorld.WinHoldFrames);
+
+            Assert.AreEqual(0, world.Clock.Step, "the room reset");
+            Assert.AreEqual(won, world.WinningFrames, "but the winning time is still readable");
+        }
+
+        [Test]
         public void AWinHoldsThenRestarts()
         {
             // GDD 3's "next room", with only one room to go to. The hold is what stops the

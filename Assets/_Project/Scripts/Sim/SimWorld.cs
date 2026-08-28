@@ -69,6 +69,16 @@ namespace KeepyUppy.Sim
         /// <summary>Touches taken on the winning run (GDD 15's medal number).</summary>
         public int WinningTouches { get; private set; }
 
+        /// <summary>
+        /// How many steps the winning attempt took (GDD 15's completion time). Survives a
+        /// restart, as the win and death counts do — Clock resets every attempt, so a record
+        /// read after the win hold would otherwise always be zero.
+        ///
+        /// This is the fastest single attempt by construction, not time accumulated across
+        /// deaths: nothing here carries over between attempts, which is the point.
+        /// </summary>
+        public int WinningFrames { get; private set; }
+
         /// <summary>GDD 15's touch count. Active hits only; passive contacts never count.</summary>
         public int TouchCount => Hits?.TouchCount ?? 0;
 
@@ -251,6 +261,12 @@ namespace KeepyUppy.Sim
             _winFrames = 0;
             WinCount++;
             WinningTouches = TouchCount;
+
+            // Clock.Step is the count of steps completed BEFORE this one, and Tick() advances
+            // the clock after this runs — so the winning step is only counted by the +1. This
+            // is a duration, not an index: a later screen divides it by SimClock.Hz to render
+            // a time, and an off-by-one there is a permanently wrong record.
+            WinningFrames = Clock.Step + 1;
         }
 
         void StepPlayer()

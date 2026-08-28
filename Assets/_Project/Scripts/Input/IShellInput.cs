@@ -34,6 +34,14 @@ namespace KeepyUppy.InputLayer
 
         bool FastForwardHeld { get; }
 
+        /// <summary>
+        /// Dev-only: hold to wipe the save. Held rather than an edge so the view can require a
+        /// deliberate hold — a tap on a destructive key is not an intent. LEVEL_EDITOR-gated at
+        /// the call site, not here, so this interface is the same shape in every build (the
+        /// same rule EditPressed follows).
+        /// </summary>
+        bool WipeSaveHeld { get; }
+
         /// <summary>Latch edges once per render frame.</summary>
         void Latch();
 
@@ -49,19 +57,23 @@ namespace KeepyUppy.InputLayer
         bool _back;
         bool _edit;
         bool _fastForward;
+        bool _wipeSave;
 
         public Vector2Int Navigate { get; private set; }
         public bool Confirm { get; private set; }
         public bool Back { get; private set; }
         public bool EditPressed { get; private set; }
         public bool FastForwardHeld { get; private set; }
+        public bool WipeSaveHeld { get; private set; }
 
-        public void Press(Vector2Int navigate, bool confirm, bool back, bool fastForward = false)
+        public void Press(Vector2Int navigate, bool confirm, bool back, bool fastForward = false,
+                          bool wipeSave = false)
         {
             _navigate = navigate;
             _confirm = confirm;
             _back = back;
             _fastForward = fastForward;
+            _wipeSave = wipeSave;
         }
 
         /// <summary>Separate from Press because EditPressed is exercised by its own test only.</summary>
@@ -81,6 +93,9 @@ namespace KeepyUppy.InputLayer
 
             // Held, not consumed: it stays true until the caller says otherwise.
             FastForwardHeld = _fastForward;
+
+            // Held, not consumed - see WipeSaveHeld on the interface.
+            WipeSaveHeld = _wipeSave;
 
             // Consumed: one press moves the cursor once.
             _navigate = Vector2Int.zero;

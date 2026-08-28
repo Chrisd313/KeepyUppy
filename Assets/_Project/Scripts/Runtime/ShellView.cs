@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using KeepyUppy.InputLayer.Devices;
 using KeepyUppy.Shell;
+using KeepyUppy.Shell.Save;
 using KeepyUppy.Sim.Level;
 using UnityEngine;
 
@@ -42,10 +43,27 @@ namespace KeepyUppy.Runtime
         int _drawnPauseCursor = -1;
         int _drawnResultsCursor = -1;
 
+        // The run that put us on Results, kept only until Results is left. Null everywhere
+        // else, including on a Results screen redrawn after the session was destroyed.
+        // Kept alongside the RunResult that produced it so DrawResults reads touches/frames
+        // from the captured run rather than from Bootstrap.Session, which can already be gone
+        // by the time it redraws - see DrawResults' comment.
+        SaveResult? _lastRun;
+        RunResult? _lastRunInput;
+        int _drawnSaveGeneration = -1;
+
         // Set by OnScreenChanged whenever the screen changes mid-Update (only ObserveWin can
         // do this today), so HandleInput below can tell that this frame's already-latched
         // intents were sampled for a screen that is no longer current. See Update's comment.
         bool _screenChangedThisFrame;
+
+#if LEVEL_EDITOR
+        // Render frames Backspace has been held on the level select. Roughly a second at 60 fps,
+        // deliberately not exact: this is a dev affordance, not a timed input (GDD 16 forbids
+        // those in gameplay).
+        const int WipeHoldFrames = 60;
+        int _wipeHeldFrames;
+#endif
 
         void Awake()
         {
@@ -77,7 +95,13 @@ namespace KeepyUppy.Runtime
                 // for why a level-triggered check in this file is the bug this method fixes.
                 // ObserveWin can flip the current screen (Playing -> Results) right here, in
                 // the middle of this method, off the balloon reaching the gate mid-frame.
+                bool wasPlaying = _stack.Current == AppScreen.Playing;
                 _stack.ObserveWin(driver.World.IsWon);
+
+                // The same edge, used once: Results is entered exactly when a run finished, so
+                // this records a clear once per win rather than once per frame spent looking at
+                // the win screen.
+                if (wasPlaying && _stack.Current == AppScreen.Results) RecordClear(driver);
             }
 
             // Race this guards: _input.Sample() above already committed this frame's intents
@@ -133,6 +157,7 @@ namespace KeepyUppy.Runtime
                     if (_input.Confirm) ConfirmLevelSelect();
 #if LEVEL_EDITOR
                     if (_input.EditPressed) StartEditing();
+                    HandleWipeHold();
 #endif
                     if (_input.Back) _stack.Back();
                     break;
@@ -200,6 +225,26 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
+        /// Folds the finished run into the save. Par comes from the level already in memory —
+        /// grading here, where the level is loaded, is what lets the level select draw a medal
+        /// without parsing every level in the game (spec 1).
+        /// </summary>
+        void RecordClear(SimDriver driver)
+        {
+            LevelSession session = Bootstrap?.Session;
+            if (session == null || Bootstrap.Save == null) return;
+
+            int par = session.Level?.meta?.par_touches ?? 0;
+            var run = new RunResult(
+                session.LevelId,
+                driver.World.WinningTouches,
+                driver.World.WinningFrames,
+                par);
+            _lastRunInput = run;
+            _lastRun = Bootstrap.Save.RecordClear(run);
+        }
+
+        /// <summary>
         /// Results' option list depends on whether a next level exists, which is only known
         /// at the moment Results is entered - so it is built here, on the transition, rather
         /// than every frame.
@@ -212,6 +257,23 @@ namespace KeepyUppy.Runtime
             // happen between Sample() and HandleInput(), and ObserveWin is the only thing that
             // can move the screen there today, but nothing here should assume it stays that way.
             _screenChangedThisFrame = true;
+
+            // The run belongs to the Results screen it was recorded for. Leaving it - to the
+            // next level, a retry, or the level select - must not leave a stale BEST! on the
+            // next room's results.
+            if (from == AppScreen.Results)
+            {
+                _lastRun = null;
+                _lastRunInput = null;
+            }
+
+#if LEVEL_EDITOR
+            // HandleWipeHold is only ever called for LevelSelect, so nothing else drives this
+            // counter back to zero. Without this, holding Backspace short of the threshold,
+            // leaving, coming back and holding again accumulates across visits instead of
+            // resetting - a hold that should have done nothing eventually wipes the save.
+            if (from == AppScreen.LevelSelect) _wipeHeldFrames = 0;
+#endif
 
             if (to != AppScreen.Results) return;
 
@@ -266,6 +328,26 @@ namespace KeepyUppy.Runtime
             _stack.ResetWin();
             _stack.Go(AppScreen.Playing);
         }
+
+        /// <summary>
+        /// Dev-only save wipe: re-testing a first clear otherwise means editing the registry
+        /// or IndexedDB by hand. Held, not tapped, and never in a shipping build — a
+        /// player-facing wipe needs a confirmation flow and a settings screen to live in, and
+        /// there is no settings screen.
+        /// </summary>
+        void HandleWipeHold()
+        {
+            if (!_input.WipeSaveHeld)
+            {
+                _wipeHeldFrames = 0;
+                return;
+            }
+
+            if (++_wipeHeldFrames != WipeHoldFrames) return;
+
+            Bootstrap?.Save?.Wipe();
+            Debug.LogWarning("[save] wiped");
+        }
 #endif
 
         void RedrawIfNeeded()
@@ -284,6 +366,11 @@ namespace KeepyUppy.Runtime
             if (_stack.Current == AppScreen.Results)
                 changed |= _results.Cursor != _drawnResultsCursor;
 
+            // A clear changes what both Results and the grid behind it should say, and neither
+            // cursor moved to signal it.
+            if (Bootstrap?.Save != null)
+                changed |= Bootstrap.Save.Generation != _drawnSaveGeneration;
+
             if (!changed) return;
 
             TextView.Clear(_drawn);
@@ -294,6 +381,7 @@ namespace KeepyUppy.Runtime
             _drawnLevelCursor = _levelSelect?.LevelCursor ?? -1;
             _drawnPauseCursor = _pause.Cursor;
             _drawnResultsCursor = _results.Cursor;
+            _drawnSaveGeneration = Bootstrap?.Save?.Generation ?? -1;
         }
 
         /// <summary>
@@ -366,8 +454,8 @@ namespace KeepyUppy.Runtime
 
             // No scrolling and no clamp: past nine entries this list runs off the bottom of
             // the 640x360 screen. Worlds are planned at ~10 levels (GDD), so this is a known
-            // future defect, not an oversight - w1 only has two levels today, which is why it
-            // hasn't been hit. Deliberately not fixed here; scrolling is deferred.
+            // future defect, not an oversight. Deliberately not fixed here; scrolling is
+            // deferred, and a wider row does not make it any worse.
             IReadOnlyList<string> levels = _levelSelect.CurrentWorldLevels;
             Vector2 listTop = Anchor(layout, 1, new Vector2(4f, 13f));
             float y = listTop.y;
@@ -375,7 +463,7 @@ namespace KeepyUppy.Runtime
             {
                 bool current = i == _levelSelect.LevelCursor;
                 Color colour = current ? SimPalette.Text : SimPalette.TextDim;
-                string line = (current ? "> " : "  ") + levels[i];
+                string line = (current ? "> " : "  ") + levels[i].ToUpperInvariant() + Progress(levels[i]);
                 TextView.Draw(parent, line, new Vector2(listTop.x, y), colour);
                 y -= 1.5f;
             }
@@ -383,6 +471,33 @@ namespace KeepyUppy.Runtime
             // Only worth the hint when there is somewhere else to go.
             if (_levelSelect.WorldCount > 1)
                 TextView.Draw(parent, "< WORLD >", Anchor(layout, 2, new Vector2(4f, 2f)), SimPalette.TextDim);
+        }
+
+        /// <summary>
+        /// A cleared level's marks: "  * G  0:47.32". Empty for a level never finished, so an
+        /// unplayed grid reads exactly as it did before there was save data.
+        ///
+        /// '*' rather than a tick, and a letter rather than a medal, because BitmapFont has
+        /// neither glyph - see MedalLabel. '&gt;' is already the cursor prefix, so the clear
+        /// mark has to be something else.
+        /// </summary>
+        string Progress(string levelId)
+        {
+            LevelRecord record = Bootstrap?.Save?.RecordFor(levelId);
+            if (record == null || !record.cleared) return "";
+
+            return $"  * {MedalInitial((Medal)record.medal)}  {SaveModel.FormatTime(record.bestTimeFrames)}";
+        }
+
+        static string MedalInitial(Medal medal)
+        {
+            switch (medal)
+            {
+                case Medal.Gold: return "G";
+                case Medal.Silver: return "S";
+                case Medal.Bronze: return "B";
+                default: return "-";
+            }
         }
 
         /// <summary>Anchors (see ScreenLayout): 0 = "paused" header, 1 = top of the option list.</summary>
@@ -393,20 +508,47 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
-        /// Anchors (see ScreenLayout): 0 = "room cleared" header, 1 = the touch-count line,
-        /// 2 = top of the option list.
+        /// Anchors (see ScreenLayout): 0 = "room cleared" header, 1 = the touch-count and
+        /// medal line, 2 = the completion time, 3 = top of the option list.
         /// </summary>
         void DrawResults(Transform parent, ScreenLayout layout)
         {
             TextView.Draw(parent, "ROOM CLEARED", Anchor(layout, 0, new Vector2(8f, 13f)), SimPalette.Text, scale: 2);
 
             // Results is only reached via the win edge, which only fires with a session
-            // running (see Update) - but Session can still vanish between the edge and this
-            // redraw, so read the touch count defensively rather than assuming it survives.
-            int touches = Bootstrap?.Session?.Driver.World.WinningTouches ?? 0;
-            TextView.Draw(parent, $"{touches} TOUCHES", Anchor(layout, 1, new Vector2(11f, 10f)), SimPalette.TextDim);
+            // running (see Update) - but Session can vanish between the edge and this redraw.
+            // Read touches, frames and the medal from the captured run rather than the live
+            // session, so the whole line is internally consistent and degrades to nothing -
+            // not to a wrong number paired with a stale medal - if the session is gone.
+            int touches = _lastRunInput?.Touches ?? 0;
+            int frames = _lastRunInput?.TimeFrames ?? 0;
 
-            DrawOptions(parent, _results, Anchor(layout, 2, new Vector2(9f, 6.5f)));
+            string medal = _lastRun.HasValue ? MedalLabel(_lastRun.Value.RunMedal) : "";
+            string touchLine = $"{touches} TOUCHES{medal}";
+            if (_lastRun.HasValue && _lastRun.Value.NewBestTouches) touchLine += " BEST!";
+            TextView.Draw(parent, touchLine, Anchor(layout, 1, new Vector2(9f, 10f)), SimPalette.TextDim);
+
+            string timeLine = SaveModel.FormatTime(frames);
+            if (_lastRun.HasValue && _lastRun.Value.NewBestTime) timeLine += " BEST!";
+            TextView.Draw(parent, timeLine, Anchor(layout, 2, new Vector2(11f, 8.5f)), SimPalette.TextDim);
+
+            DrawOptions(parent, _results, Anchor(layout, 3, new Vector2(9f, 6f)));
+        }
+
+        /// <summary>
+        /// The medal as text. BitmapFont has letters, digits and a little punctuation - no
+        /// medal glyph - and drawing one is an art pass, which GDD 13.3 holds until the
+        /// control-scheme question closes.
+        /// </summary>
+        static string MedalLabel(Medal medal)
+        {
+            switch (medal)
+            {
+                case Medal.Gold: return "  GOLD";
+                case Medal.Silver: return "  SILVER";
+                case Medal.Bronze: return "  BRONZE";
+                default: return "";
+            }
         }
 
         /// <summary>

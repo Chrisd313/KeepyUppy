@@ -26,10 +26,11 @@ Each phase so far has gone spec → plan → build, and the spec is the binding 
 two disagree. Read the relevant spec before extending something it covers — it usually records
 why an obvious-looking alternative was rejected.
 
-**Next up is phase C — progression:** save data, and the level select showing completion, the
-touch-count medal and best times. The design is already written — see
-`docs/superpowers/specs/2026-08-24-menus-and-level-list-design.md` §2 for the schema, and
-`docs/menu-shell.md` §7 for what the screen is missing without it. Nothing persists today.
+**Phases A, B and C are built.** The level list, the menu shell and progression all exist:
+clears, medals and best times persist through `SaveService` and read back on the level select
+and Results. What is still missing is deliberate — see `docs/menu-shell.md` §6: no unlock
+gating, no scrolling on a long level list, and no settings screen for GDD §16's accessibility
+toggles.
 
 ---
 

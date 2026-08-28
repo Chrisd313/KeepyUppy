@@ -74,6 +74,21 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void WipeIsHeldRatherThanConsumed()
+        {
+            // Held, like fast-forward: the view counts frames to require a deliberate hold, so
+            // an intent that cleared itself after one Sample could never reach the threshold.
+            var input = new ScriptedShellInput();
+            input.Press(Vector2Int.zero, confirm: false, back: false, fastForward: false, wipeSave: true);
+
+            input.Sample();
+            Assert.IsTrue(input.WipeSaveHeld);
+
+            input.Sample();
+            Assert.IsTrue(input.WipeSaveHeld, "still held with no new press");
+        }
+
+        [Test]
         public void NothingPressedReadsNeutral()
         {
             var input = new ScriptedShellInput();
