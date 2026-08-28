@@ -155,6 +155,64 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void DeleteTrigger_StripsItFromOtherLinksTargetLists()
+        {
+            EditorSession session = Session();
+            session.AddTrigger(new Rect(9f, 1f, 6f, 4f));   // t01
+            session.AddTrigger(new Rect(20f, 1f, 2f, 2f));  // t02, also a valid link target
+
+            session.AddLink("t01", "e01");
+            session.AddLink("t01", "t02");
+
+            session.DeleteTrigger("t02");
+
+            Assert.AreEqual(new[] { "e01" }, session.Level.links[0].to,
+                            "t02 is gone as a target, but the link to e01 survives");
+        }
+
+        [Test]
+        public void DeleteTrigger_RemovesALinkLeftWithNoTargets_WhenItsOnlyTargetIsDeleted()
+        {
+            EditorSession session = Session();
+            session.AddTrigger(new Rect(9f, 1f, 6f, 4f));   // t01
+            session.AddTrigger(new Rect(20f, 1f, 2f, 2f));  // t02
+
+            session.AddLink("t01", "t02");
+
+            session.DeleteTrigger("t02");
+
+            Assert.AreEqual(0, session.Level.links.Length, "an empty link is not a link");
+        }
+
+        [Test]
+        public void DeleteEntity_StripsItFromAnyLinksTargetList()
+        {
+            EditorSession session = Session();
+            session.AddTrigger(new Rect(9f, 1f, 6f, 4f));   // t01
+
+            session.AddLink("t01", "e01");
+            session.AddLink("t01", "z01");
+
+            session.DeleteEntity("e01");
+
+            Assert.AreEqual(new[] { "z01" }, session.Level.links[0].to,
+                            "e01 is gone as a target, but the link to z01 survives");
+        }
+
+        [Test]
+        public void DeleteZone_RemovesALinkLeftWithNoTargets_WhenItsOnlyTargetIsDeleted()
+        {
+            EditorSession session = Session();
+            session.AddTrigger(new Rect(9f, 1f, 6f, 4f));   // t01
+
+            session.AddLink("t01", "z01");
+
+            session.DeleteZone("z01");
+
+            Assert.AreEqual(0, session.Level.links.Length, "an empty link is not a link");
+        }
+
+        [Test]
         public void TargetCentre_FindsEntitiesZonesAndTriggers()
         {
             EditorSession session = Session();

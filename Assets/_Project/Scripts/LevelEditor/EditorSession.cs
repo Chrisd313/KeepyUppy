@@ -329,6 +329,8 @@ namespace KeepyUppy.LevelEditing
             entities.Remove(entity);
             Level.entities = entities.ToArray();
 
+            RemoveLinksReferencing(id);
+
             if (SelectedEntityId == id) SelectedEntityId = null;
             Dirty = true;
             return true;
@@ -398,9 +400,9 @@ namespace KeepyUppy.LevelEditing
         }
 
         /// <summary>
-        /// Selects a zone, clearing the entity and exit selections.
+        /// Selects a zone, clearing the entity, trigger and exit selections.
         ///
-        /// The three are mutually exclusive because more than the inspector reads them: the
+        /// The four are mutually exclusive because more than the inspector reads them: the
         /// Delete key tests each independently, so two live selections means one keypress
         /// destroying two objects.
         /// </summary>
@@ -413,9 +415,9 @@ namespace KeepyUppy.LevelEditing
         }
 
         /// <summary>
-        /// Selects an entity, clearing the zone and exit selections.
+        /// Selects an entity, clearing the zone, trigger and exit selections.
         ///
-        /// The three are mutually exclusive because more than the inspector reads them: the
+        /// The four are mutually exclusive because more than the inspector reads them: the
         /// Delete key tests each independently, so two live selections means one keypress
         /// destroying two objects.
         /// </summary>
@@ -483,6 +485,8 @@ namespace KeepyUppy.LevelEditing
             var zones = new List<LevelZone>(Level.zones);
             zones.Remove(zone);
             Level.zones = zones.ToArray();
+
+            RemoveLinksReferencing(id);
 
             if (SelectedZoneId == id) SelectedZoneId = null;
             Dirty = true;
@@ -642,6 +646,10 @@ namespace KeepyUppy.LevelEditing
             var links = new List<LevelLink>(Level.links ?? new LevelLink[0]);
             links.RemoveAll(link => link != null && link.from == id);
             Level.links = links.ToArray();
+
+            // A trigger can also be another link's TARGET (TargetCentre resolves triggers
+            // just like entities and zones), so the source-side removal above is not enough.
+            RemoveLinksReferencing(id);
 
             if (SelectedTriggerId == id) SelectedTriggerId = null;
             Dirty = true;
@@ -808,6 +816,43 @@ namespace KeepyUppy.LevelEditing
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Strips a deleted id from every link's target list, dropping any link left with no
+        /// targets. Entities, zones and triggers can all be link targets (TargetCentre
+        /// resolves all three), so every delete path needs this or the delete leaves a
+        /// dangling id behind for LevelValidator to catch instead.
+        /// </summary>
+        void RemoveLinksReferencing(string id)
+        {
+            if (Level.links == null) return;
+
+            var links = new List<LevelLink>();
+            bool changed = false;
+
+            foreach (LevelLink link in Level.links)
+            {
+                if (link?.to == null || System.Array.IndexOf(link.to, id) < 0)
+                {
+                    links.Add(link);
+                    continue;
+                }
+
+                var targets = new List<string>(link.to);
+                targets.Remove(id);
+                changed = true;
+
+                if (targets.Count == 0) continue; // an empty link is not a link
+
+                link.to = targets.ToArray();
+                links.Add(link);
+            }
+
+            if (!changed) return;
+
+            Level.links = links.ToArray();
+            Dirty = true;
         }
 
         static float DistanceToSegment(Vector2 p, Vector2 a, Vector2 b)
