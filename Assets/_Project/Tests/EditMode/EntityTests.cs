@@ -504,5 +504,16 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(EntityDefaults.SpikeBarLength, bar.Length, 0.0001f);
             Assert.AreEqual(EntityDefaults.SpikeBarAngle, bar.Angle, 0.0001f);
         }
+
+        [Test]
+        public void SpikeBar_DefaultFor_MatchesTheFactoryFallbacks()
+        {
+            Assert.AreEqual(EntityDefaults.SpikeBarRadius, EntityFields.DefaultFor("spike_bar", EntityParamId.Radius), 0.0001f);
+            Assert.AreEqual(EntityDefaults.SpikeBarLength, EntityFields.DefaultFor("spike_bar", EntityParamId.Length), 0.0001f);
+            Assert.AreEqual(EntityDefaults.SpikeBarAngle, EntityFields.DefaultFor("spike_bar", EntityParamId.Angle), 0.0001f);
+
+            // Speed has no default for a spike bar, same as the lamp's.
+            Assert.AreEqual(0f, EntityFields.DefaultFor("spike_bar", EntityParamId.Speed), 0.0001f);
+        }
     }
 }

@@ -94,6 +94,12 @@ namespace KeepyUppy.Sim.Level
                     if (id == EntityParamId.Power) return EntityDefaults.FanPower;
                     return 0f;
 
+                case EntityKind.SpikeBar:
+                    if (id == EntityParamId.Radius) return EntityDefaults.SpikeBarRadius;
+                    if (id == EntityParamId.Length) return EntityDefaults.SpikeBarLength;
+                    if (id == EntityParamId.Angle) return EntityDefaults.SpikeBarAngle;
+                    return 0f;
+
                 default:
                     return 0f;
             }
