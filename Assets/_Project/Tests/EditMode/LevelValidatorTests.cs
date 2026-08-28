@@ -186,5 +186,102 @@ namespace KeepyUppy.SimTests
             level.entities = new[] { new LevelEntity { id = "e01", type = "", pos = new[] { 5f, 5f } } };
             AssertWarns(level, "has no type");
         }
+
+        static bool Mentions(System.Collections.Generic.List<string> warnings, string fragment)
+        {
+            foreach (string warning in warnings)
+                if (warning.Contains(fragment)) return true;
+
+            return false;
+        }
+
+        [Test]
+        public void Timer_WithNoSeconds_IsAnError()
+        {
+            LevelData level = Valid();
+            level.triggers = new[] { new LevelTrigger { id = "t01", type = "timer", seconds = 0f } };
+
+            Assert.IsTrue(Mentions(LevelValidator.Validate(level), "timer"));
+        }
+
+        [Test]
+        public void Region_WithAZeroAreaRect_IsAnError()
+        {
+            LevelData level = Valid();
+            level.triggers = new[]
+            {
+                new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 4f, 4f, 0f, 3f } },
+            };
+
+            Assert.IsTrue(Mentions(LevelValidator.Validate(level), "zero-area"));
+        }
+
+        [Test]
+        public void Trigger_NothingLinksFrom_IsWarned()
+        {
+            LevelData level = Valid();
+            level.triggers = new[]
+            {
+                new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 4f, 4f, 2f, 2f } },
+            };
+            level.links = new LevelLink[0];
+
+            Assert.IsTrue(Mentions(LevelValidator.Validate(level), "nothing links from"));
+        }
+
+        [Test]
+        public void TwoOnceTriggers_WithIdenticalRects_AreWarned()
+        {
+            LevelData level = Valid();
+            level.triggers = new[]
+            {
+                new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 4f, 4f, 2f, 2f }, once = true },
+                new LevelTrigger { id = "t02", type = "player_region", rect = new[] { 4f, 4f, 2f, 2f }, once = true },
+            };
+
+            Assert.IsTrue(Mentions(LevelValidator.Validate(level), "identical rect"));
+        }
+
+        [Test]
+        public void InertTypesAndActions_AreCalledOut()
+        {
+            LevelData level = Valid();
+            level.triggers = new[]
+            {
+                new LevelTrigger { id = "t01", type = "lever", rect = new[] { 4f, 4f, 2f, 2f } },
+            };
+            level.links = new[]
+            {
+                new LevelLink { from = "t01", to = new string[0], action = "fire" },
+            };
+
+            System.Collections.Generic.List<string> warnings = LevelValidator.Validate(level);
+
+            Assert.IsTrue(Mentions(warnings, "not simulated"), "the inert type");
+            Assert.IsTrue(Mentions(warnings, "'fire'"), "the inert action");
+        }
+
+        [Test]
+        public void AWellFormedTrap_ProducesNoTriggerWarnings()
+        {
+            LevelData level = Valid();
+            level.entities = new[]
+            {
+                new LevelEntity { id = "e01", type = "spike_bar", pos = new[] { 14f, 1f }, start_state = "dormant" },
+            };
+            level.triggers = new[]
+            {
+                new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 9f, 1f, 6f, 4f }, once = true },
+            };
+            level.links = new[]
+            {
+                new LevelLink { from = "t01", to = new[] { "e01" }, action = "on", delay = 0.2f },
+            };
+
+            System.Collections.Generic.List<string> warnings = LevelValidator.Validate(level);
+
+            Assert.IsFalse(Mentions(warnings, "trigger"), string.Join(" | ", warnings));
+            Assert.IsFalse(Mentions(warnings, "link"), string.Join(" | ", warnings));
+        }
     }
 }
