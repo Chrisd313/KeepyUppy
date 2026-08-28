@@ -210,6 +210,7 @@ namespace KeepyUppy.LevelEditing
             if (kb.digit5Key.wasPressedThisFrame) Session.Tool = EditorTool.Path;
             if (kb.pKey.wasPressedThisFrame) Session.Tool = EditorTool.Place;
             if (kb.digit8Key.wasPressedThisFrame) Session.Tool = EditorTool.Trigger;
+            if (kb.digit6Key.wasPressedThisFrame) Session.Tool = EditorTool.Link;
 
             if (Session.Tool != EditorTool.Zone) _zoneForceNew = false;
             if (Session.Tool != EditorTool.Trigger) { _triggerCorner = ZoneCorner.None; _triggerCreating = false; }
@@ -291,6 +292,7 @@ namespace KeepyUppy.LevelEditing
                 case EditorTool.Path: PathTool(mouse, world); break;
                 case EditorTool.Place: PlaceTool(mouse, world); break;
                 case EditorTool.Trigger: TriggerTool(mouse, world); break;
+                case EditorTool.Link: LinkTool(mouse, world); break;
             }
         }
 
@@ -552,6 +554,73 @@ namespace KeepyUppy.LevelEditing
                 _dragging = false;
                 _triggerCorner = ZoneCorner.None;
             }
+        }
+
+        /// <summary>
+        /// Wiring (level-editor-spec 4, tool 6). Click a trigger, then click an entity, zone
+        /// or trigger to wire it. Right-click an arrow to unwire that one target.
+        ///
+        /// The selected trigger IS the pending source, so there is no extra mode state to get
+        /// out of sync with what the author can see highlighted.
+        /// </summary>
+        void LinkTool(Mouse mouse, Vector2 world)
+        {
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                if (!Session.LinkAt(world, out string from, out string to)) return;
+
+                Session.BeginEdit();
+                Session.RemoveLink(from, to);
+                SyncDynamic();
+                _status = $"unlinked {from} → {to}";
+                return;
+            }
+
+            if (!mouse.leftButton.wasPressedThisFrame) return;
+
+            LevelTrigger trigger = Session.TriggerAt(world);
+
+            if (trigger != null && Session.SelectedTriggerId == null)
+            {
+                Session.SelectTrigger(trigger.id);
+                _status = $"linking from {trigger.id} — click a target";
+                return;
+            }
+
+            if (Session.SelectedTriggerId == null)
+            {
+                _status = "click a trigger first";
+                return;
+            }
+
+            string target = TargetIdAt(world);
+
+            if (target == null || target == Session.SelectedTriggerId)
+            {
+                // Clicking the source again, or empty space, drops the pending wire rather
+                // than leaving the author in a mode they cannot see they are in.
+                Session.SelectTrigger(null);
+                _status = "link cancelled";
+                return;
+            }
+
+            Session.BeginEdit();
+            Session.AddLink(Session.SelectedTriggerId, target);
+            SyncDynamic();
+            _status = $"linked {Session.SelectedTriggerId} → {target}";
+        }
+
+        /// <summary>An entity, zone or trigger under the cursor, in that order of precedence.</summary>
+        string TargetIdAt(Vector2 world)
+        {
+            LevelEntity entity = Session.EntityAt(world);
+            if (entity != null) return entity.id;
+
+            LevelZone zone = Session.ZoneAt(world);
+            if (zone != null) return zone.id;
+
+            LevelTrigger trigger = Session.TriggerAt(world);
+            return trigger?.id;
         }
 
         /// <summary>
@@ -865,6 +934,7 @@ namespace KeepyUppy.LevelEditing
             if (GUILayout.Button("4 Zone", GUILayout.Width(70f))) Session.Tool = EditorTool.Zone;
             if (GUILayout.Button("5 Path", GUILayout.Width(70f))) Session.Tool = EditorTool.Path;
             if (GUILayout.Button("8 Trigger", GUILayout.Width(70f))) Session.Tool = EditorTool.Trigger;
+            if (GUILayout.Button("6 Link", GUILayout.Width(70f))) Session.Tool = EditorTool.Link;
             if (GUILayout.Button("P Place", GUILayout.Width(70f))) Session.Tool = EditorTool.Place;
             GUILayout.Space(20f);
             if (GUILayout.Button("Save (Ctrl+S)", GUILayout.Width(110f))) Save();
@@ -925,6 +995,13 @@ namespace KeepyUppy.LevelEditing
             if (Session.Tool == EditorTool.Zone && Session.SelectedZoneId != null)
             {
                 DrawZoneInspector();
+                return;
+            }
+
+            if ((Session.Tool == EditorTool.Trigger || Session.Tool == EditorTool.Link)
+                && Session.SelectedTriggerId != null)
+            {
+                DrawTriggerInspector();
                 return;
             }
 
@@ -997,6 +1074,18 @@ namespace KeepyUppy.LevelEditing
             GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
 
             bool changed = ZoneInspector.Draw(Session, _fieldText);
+
+            GUILayout.EndArea();
+
+            if (changed) SyncDynamic();
+        }
+
+        void DrawTriggerInspector()
+        {
+            _inspectorRect = InspectorRect(460f);
+            GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
+
+            bool changed = TriggerInspector.Draw(Session, _fieldText);
 
             GUILayout.EndArea();
 
@@ -1308,6 +1397,7 @@ namespace KeepyUppy.LevelEditing
             if (_showSafeArea) DrawSafeArea();
             DrawZones();
             DrawTriggers();
+            DrawLinks();
             if (_showHitboxes) DrawHitboxes();
             DrawEntities();
         }
@@ -1554,6 +1644,37 @@ namespace KeepyUppy.LevelEditing
                 DrawHandle(new Vector2(rect.xMax, rect.yMin));
                 DrawHandle(new Vector2(rect.xMin, rect.yMax));
                 DrawHandle(new Vector2(rect.xMax, rect.yMax));
+            }
+        }
+
+        /// <summary>
+        /// One line per wired target, from the trigger's centre to the target's. The same
+        /// segment EditorSession.LinkAt hit-tests, so what is clickable is what is drawn.
+        /// </summary>
+        void DrawLinks()
+        {
+            if (Session.Level.links == null) return;
+
+            foreach (LevelLink link in Session.Level.links)
+            {
+                if (link?.to == null) continue;
+                if (!Session.TargetCentre(link.from, out Vector2 source)) continue;
+
+                bool selected = link.from == Session.SelectedTriggerId;
+                Color colour = TriggerFill;
+                colour.a = selected ? 0.9f : 0.5f;
+
+                foreach (string target in link.to)
+                {
+                    if (!Session.TargetCentre(target, out Vector2 centre)) continue;
+
+                    DrawWorldLine(source, centre, colour);
+
+                    // A blob at the target end: an arrowhead needs a rotated triangle, and
+                    // spec 2 is explicit that ugly is correct here.
+                    Vector2 tip = Vector2.MoveTowards(centre, source, 0.35f);
+                    DrawWorldRect(new Rect(tip.x - 0.15f, tip.y - 0.15f, 0.3f, 0.3f), colour);
+                }
             }
         }
 
