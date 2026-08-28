@@ -777,6 +777,14 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         void DrawInspector()
         {
+            // Before the exit and entity branches: the zone tool has its own selection, and
+            // reaching the entity inspector's early returns would mean never drawing at all.
+            if (Session.Tool == EditorTool.Zone && Session.SelectedZoneId != null)
+            {
+                DrawZoneInspector();
+                return;
+            }
+
             if (Session.ExitSelected) { DrawExitInspector(); return; }
 
             LevelEntity entity = Session.FindEntity(Session.SelectedEntityId);
@@ -826,10 +834,30 @@ namespace KeepyUppy.LevelEditing
             DrawPathRow(entity);
             DrawStateRow(entity);
 
-            if (Session.Tool == EditorTool.Zone && ZoneInspector.Draw(Session, _fieldText))
-                SyncDynamic();
+            GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// The selected zone's fields, in its own area.
+        ///
+        /// A sibling of DrawExitInspector rather than a section inside the entity inspector:
+        /// the zone selection is independent of the entity one, so sharing that method's body
+        /// would mean the panel only appeared when an entity happened to be selected too.
+        ///
+        /// Setting _inspectorRect is load-bearing, not bookkeeping — PointerOverUi reads it to
+        /// keep a click on the panel from falling through to the canvas and editing the zone
+        /// underneath.
+        /// </summary>
+        void DrawZoneInspector()
+        {
+            _inspectorRect = new Rect(Screen.width - 252f, 60f, 244f, 320f);
+            GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
+
+            bool changed = ZoneInspector.Draw(Session, _fieldText);
 
             GUILayout.EndArea();
+
+            if (changed) SyncDynamic();
         }
 
         /// <summary>
