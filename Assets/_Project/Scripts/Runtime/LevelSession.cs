@@ -58,10 +58,11 @@ namespace KeepyUppy.Runtime
             LevelLoader.ApplyAndConfigure(level, world, driver.Keyboard, seed);
 
             session.BuildTileViews(world.Grid);
-            session.BuildEntityViews(world);
+            session.BuildZoneViews(world);
+            session.BuildEntityViews(world, driver);
             session.BuildExitView(world);
-            session.BuildBalloonView(world.Balloon);
-            session.BuildPlayerView(world.Player);
+            session.BuildBalloonView(world.Balloon, driver);
+            session.BuildPlayerView(world.Player, driver);
 
             session.gameObject.AddComponent<SimDebugOverlay>().Driver = driver;
 
@@ -106,13 +107,28 @@ namespace KeepyUppy.Runtime
             root.AddComponent<TileViewSync>().Grid = grid;
         }
 
+        /// <summary>
+        /// Air zones are drawn behind the entities and in front of the tiles. Without this
+        /// they act on the balloon while being invisible, which reads as the balloon bouncing
+        /// off geometry that is not there (GDD 6.2).
+        /// </summary>
+        void BuildZoneViews(SimWorld world)
+        {
+            var root = new GameObject("Zones");
+            root.transform.SetParent(transform, false);
+
+            root.AddComponent<ZoneViewSync>().World = world;
+        }
+
         /// <summary>Hazard quads follow the entities, which move every step (GDD 9).</summary>
-        void BuildEntityViews(SimWorld world)
+        void BuildEntityViews(SimWorld world, SimDriver driver)
         {
             var root = new GameObject("Entities");
             root.transform.SetParent(transform, false);
 
-            root.AddComponent<EntityViewSync>().World = world;
+            var sync = root.AddComponent<EntityViewSync>();
+            sync.World = world;
+            sync.Driver = driver;
         }
 
         /// <summary>The gate follows the world's exit, so editing it shows up at once.</summary>
@@ -124,7 +140,7 @@ namespace KeepyUppy.Runtime
             root.AddComponent<ExitView>().World = world;
         }
 
-        void BuildBalloonView(BalloonBody balloon)
+        void BuildBalloonView(BalloonBody balloon, SimDriver driver)
         {
             float d = balloon.Radius * 2f;
             GameObject go = QuadView.Create(
@@ -135,10 +151,12 @@ namespace KeepyUppy.Runtime
                 new Vector2(d, d),
                 -1f
             );
-            go.AddComponent<BalloonView>().Body = balloon;
+            var view = go.AddComponent<BalloonView>();
+            view.Body = balloon;
+            view.Driver = driver;
         }
 
-        void BuildPlayerView(PlayerBody player)
+        void BuildPlayerView(PlayerBody player, SimDriver driver)
         {
             GameObject go = QuadView.Create(
                 transform,
@@ -148,7 +166,9 @@ namespace KeepyUppy.Runtime
                 new Vector2(player.HalfWidth * 2f, player.HalfHeight * 2f),
                 -0.5f
             );
-            go.AddComponent<PlayerView>().Body = player;
+            var view = go.AddComponent<PlayerView>();
+            view.Body = player;
+            view.Driver = driver;
         }
     }
 }

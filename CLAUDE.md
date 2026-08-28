@@ -140,6 +140,14 @@ Gameplay reserves `Space` `W` `A` `D` `J` `R` `Esc` and the arrow keys. The shel
 
 **Do not pixel-snap moving entities.** At 20 px/metre a Nominal balloon falls 0.67 px per frame; snapping produces visible judder on the exact object the player is tracking. Snap the tile grid only.
 
+**Moving views interpolate between fixed steps** (`StepInterpolator`, GDD §13.2). The sim ticks
+only in `FixedUpdate` at 60 Hz and the display is not phase-locked to it, so sampling a body's
+position raw on a render frame judders for the same reason snapping does — it reads as the
+balloon bouncing off nothing in mid-air. `SimDriver` carries `[DefaultExecutionOrder(-100)]` so
+a view's own `FixedUpdate` samples *after* the step ran; **sample once per fixed step, never
+once per render frame.** The interpolated value is never written back and the sim cannot observe
+it, exactly as with `TimeControl`.
+
 ### WebGL build size
 
 The primary shipping risk (GDD §17.2). IL2CPP with aggressive stripping, Brotli compression, no unused packages, one texture atlas per world. **Check the build size at the end of P0**, not later.
