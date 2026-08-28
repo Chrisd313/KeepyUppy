@@ -1,5 +1,6 @@
 using KeepyUppy.InputLayer;
 using KeepyUppy.Sim.Entities;
+using KeepyUppy.Sim.Triggers;
 using UnityEngine;
 
 namespace KeepyUppy.Sim
@@ -21,6 +22,9 @@ namespace KeepyUppy.Sim
 
         /// <summary>Moving hazards (GDD 9). Empty until a level supplies some.</summary>
         public readonly EntityField Entities = new EntityField();
+
+        /// <summary>Triggers and links (GDD 9.3). Stepped last; see Tick.</summary>
+        public readonly TriggerField Triggers = new TriggerField();
 
         /// <summary>The way out (GDD 3, 7.4). Absent in the physics-only test rooms.</summary>
         public ExitGate Exit = ExitGate.None;
