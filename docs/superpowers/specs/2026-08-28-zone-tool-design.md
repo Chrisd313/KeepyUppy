@@ -94,9 +94,8 @@ balloon back to spawn. **Only the method's name is wrong.** Rename it `SyncDynam
 | `LevelEditor/ZoneGeometry.cs` | **New.** Pure statics: `Normalise(a, b)` → tile-snapped `Rect`; `HandleAt(rect, world, radius)` → which corner or none; `Resize(rect, corner, world)`; the minimum-size clamp |
 | `LevelEditor/EditorSession.cs` | `SelectedZoneId` plus `AddZone`, `ZoneAt` (spatial hit test), `FindZone` (by id), `MoveZone`, `ResizeZone`, `DeleteZone`, `NextZoneId` |
 | `LevelEditor/ZoneInspector.cs` | **New.** The IMGUI block for the selected zone, kept out of the controller |
-| `LevelEditor/LevelEditorController.cs` | `digit4Key` binding, toolbar button, `case EditorTool.Zone`, `ZoneTool(mouse, world)`, selection overlay, `Delete` and right-click wired to zones |
+| `LevelEditor/LevelEditorController.cs` | `digit4Key` binding, toolbar button, `case EditorTool.Zone`, `ZoneTool(mouse, world)`, the zone overlay, `Delete` and right-click wired to zones |
 | `LevelEditor/ILevelEditorHost.cs`, `Runtime/BootstrapEditorHost.cs` | `SyncEntities` → `SyncDynamic` |
-| `Runtime/ZoneViewSync.cs` | A disabled zone is hidden in play but drawn dimmed in the editor |
 
 The controller is already large. The inspector goes in its own file rather than growing it
 further. Refactoring the *existing* inspector is out of scope — the goal is to not make the
@@ -127,7 +126,7 @@ or the shell's `E` and `F`.
 | Left-drag on empty space | Create; on release the new zone becomes selected |
 | Left-press inside a zone | Select, and drag to move — offset preserved, as `SelectTool` does |
 | Left-press on a corner handle | Resize from that corner |
-| `N` then drag | Force-create, even inside an existing zone. One-shot: cleared on release, tool change, or Escape. Status line reads `new zone: drag to place` |
+| `N` then drag | Force-create, even inside an existing zone. `N` toggles it; it also clears on release and on tool change. Not Escape — that is the shell's Back and is reserved. Status line reads `new zone: drag to place` |
 | `Delete` | Delete the selected zone, extending the binding that already deletes a selected entity |
 | Right-click inside a zone | Delete it, matching Path's right-click-deletes-waypoint |
 
@@ -158,22 +157,29 @@ Shown when a zone is selected:
 
 ## Rendering
 
-`ZoneViewSync` currently calls `SetActive(zone.enabled)`, which hides an `off` zone
-entirely — making it unselectable and impossible to switch back on. Instead:
+Two separate paths, because they answer different questions.
 
-- **In play:** an `off` zone is hidden. The player must not see an inactive zone as if it
-  were live.
-- **In the editor:** an `off` zone is drawn dimmed, keyed off `DevInputCapture.EditorModeActive`,
-  which `Runtime` can already read.
+**In play — `ZoneViewSync`, reading `World.Air`.** Unchanged by this work. `LoadZones` only
+admits `type: "air"`, so the field holds exactly the zones that do something, and
+`SetActive(zone.enabled)` is already the right rule: an `off` zone must not be shown to the
+player as if it were live.
+
+**In the editor — an overlay drawn by the controller, reading `Session.Level.zones`.**
+This has to be a separate path rather than reusing `ZoneViewSync`, and the reason is
+load-bearing: `LoadZones` drops every non-air zone, so the five inert types never reach
+`AirField` and a view reading it could never draw them. Since all six types are authorable,
+an overlay that cannot draw five of them is an overlay that cannot select or edit them
+either. The editor edits `LevelData`, so the editor draws `LevelData`.
+
+The overlay uses the controller's existing `DrawWorldRect`, alongside the grid, hitbox and
+safe-area overlays. It draws every zone regardless of type or `start_state`, dims those set
+`off`, and adds the selection outline and corner handles for the selected zone.
+`ZoneViewSync` stays a plain view that knows nothing about selection.
 
 Air zones are visible to the player, faint and translucent, in the fan's existing blue —
 never a reserved colour (GDD §13.1), because wind is not lethal and the hazard hue means
 "this hurts". An invisible force acting on the balloon is unreadable, and a player cannot
 learn a room whose rules they cannot see.
-
-Selection outline and corner handles are **editor overlay**, drawn by the controller
-alongside the existing grid, hitbox and safe-area overlays. `ZoneViewSync` stays a plain
-view that knows nothing about selection.
 
 ## Testing
 
