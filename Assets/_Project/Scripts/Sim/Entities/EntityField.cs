@@ -44,6 +44,11 @@ namespace KeepyUppy.Sim.Entities
 
             if (entity.Kind == EntityKind.Unknown) UnknownCount++;
 
+            // The state the level declared, captured before the first Reset() reads it back.
+            // Reset() restores Active from StartActive, so anything built with an object
+            // initialiser — a test room, or EntityFactory — is dormant on every attempt, not
+            // just the first (GDD 9.3).
+            entity.StartActive = entity.Active;
             entity.Reset();
             _entities.Add(entity);
 

@@ -2,6 +2,7 @@ using System;
 using KeepyUppy.InputLayer;
 using KeepyUppy.Sim;
 using KeepyUppy.Sim.Entities;
+using KeepyUppy.Sim.Triggers;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -38,6 +39,13 @@ namespace KeepyUppy.SimTests
         public int entityPositions;
         public int entityExposure;
 
+        /// <summary>
+        /// Trigger run state and the arm/disarm flags a link writes, folded to one value each
+        /// so the snapshot does not have to know how many of either a room has.
+        /// </summary>
+        public int triggerState;
+        public int activeStates;
+
         public static SimSnapshot Capture(SimWorld w) => new SimSnapshot
         {
             step = w.Clock.Step,
@@ -58,6 +66,8 @@ namespace KeepyUppy.SimTests
             winningFrames = w.WinningFrames,
             entityPositions = FoldPositions(w.Entities),
             entityExposure = FoldExposure(w.Entities),
+            triggerState = FoldTriggers(w.Triggers),
+            activeStates = FoldActive(w.Entities, w.Air),
         };
 
         static int FoldPositions(EntityField entities)
@@ -81,6 +91,37 @@ namespace KeepyUppy.SimTests
                 int hash = (int)2166136261;
                 for (int i = 0; i < entities.Count; i++)
                     hash = (hash ^ entities[i].ExposureFrames) * 16777619;
+
+                return hash;
+            }
+        }
+
+        static int FoldTriggers(TriggerField triggers)
+        {
+            unchecked
+            {
+                int hash = (int)2166136261;
+                for (int i = 0; i < triggers.Count; i++)
+                {
+                    hash = (hash ^ (triggers[i].Fired ? 1 : 0)) * 16777619;
+                    hash = (hash ^ (triggers[i].WasInside ? 2 : 0)) * 16777619;
+                }
+
+                // A delay in flight is state too: two runs must have the same links pending.
+                return (hash ^ triggers.PendingCount) * 16777619;
+            }
+        }
+
+        static int FoldActive(EntityField entities, AirField air)
+        {
+            unchecked
+            {
+                int hash = (int)2166136261;
+                for (int i = 0; i < entities.Count; i++)
+                    hash = (hash ^ (entities[i].Active ? 1 : 0)) * 16777619;
+
+                for (int i = 0; i < air.Count; i++)
+                    hash = (hash ^ (air[i].enabled ? 1 : 0)) * 16777619;
 
                 return hash;
             }
@@ -118,6 +159,8 @@ namespace KeepyUppy.SimTests
                 Assert.AreEqual(winningFrames, other.winningFrames, $"{context}: winningFrames");
             Assert.AreEqual(entityPositions, other.entityPositions, $"{context}: entity positions");
             Assert.AreEqual(entityExposure, other.entityExposure, $"{context}: entity exposure");
+            Assert.AreEqual(triggerState, other.triggerState, $"{context}: trigger state");
+            Assert.AreEqual(activeStates, other.activeStates, $"{context}: active states");
         }
 
         static void AssertBits(float a, float b, string message)
@@ -177,6 +220,51 @@ namespace KeepyUppy.SimTests
             world.Balloon.Radius = InflationBands.RadiusOf(InflationBand.Nominal);
             world.Configure(new Vector2(8.3f, 12.1f), new Vector2(2.7f, -1.3f),
                             new Vector2(8.0f, 2.0f), BusyScript(), seed);
+
+            return world;
+        }
+
+        /// <summary>
+        /// A GDD 9.3 betrayal trap in miniature: a dormant spike bar and an off gust, both
+        /// armed by a once:true region the scripted player walks into, one after a delay.
+        /// The state triggers add is only observable in a room that actually fires them.
+        /// </summary>
+        public static SimWorld BuildTrapRoom(int seed)
+        {
+            var world = new SimWorld { EnableFlutter = true };
+
+            world.Grid.Clear();
+            world.Grid.FillBorder();
+
+            world.Air.Clear();
+            world.Air.Add(new AirZone("z_gust", new Rect(8f, 1f, 6f, 10f), new Vector2(0f, 6f), false));
+
+            world.Entities.Clear();
+            world.Entities.Add(new SimEntity
+            {
+                Id = "bar", Kind = EntityKind.SpikeBar, Radius = 0.25f, Length = 1f,
+                Angle = 90f, Active = false, StartActive = false,
+                Points = new[] { new Vector2(14f, 1f) },
+            }, world.Air);
+
+            world.Triggers.Clear();
+            world.Triggers.Add(new SimTrigger
+            {
+                Id = "t01", Kind = TriggerKind.PlayerRegion, Once = true,
+                Rect = new Rect(9f, 1f, 6f, 4f),
+            });
+            world.Triggers.AddLink(new SimLink
+            {
+                FromIndex = 0, ToIds = new[] { "bar" }, Action = LinkAction.On, DelaySteps = 0,
+            });
+            world.Triggers.AddLink(new SimLink
+            {
+                FromIndex = 0, ToIds = new[] { "z_gust" }, Action = LinkAction.Toggle, DelaySteps = 24,
+            });
+
+            world.Balloon.Radius = InflationBands.RadiusOf(InflationBand.Nominal);
+            world.Configure(new Vector2(6f, 12f), new Vector2(1.5f, 0f),
+                            new Vector2(4f, 1.5f), BusyScript(), seed);
 
             return world;
         }

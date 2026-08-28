@@ -20,12 +20,16 @@ namespace KeepyUppy.Sim
         /// <summary>Maps to the schema's start_state, and later to links/triggers.</summary>
         public bool enabled;
 
+        /// <summary>What enabled returns to on a restart, for the same reason as SimEntity.StartActive.</summary>
+        public bool startEnabled;
+
         public AirZone(string id, Rect rect, Vector2 vAir, bool enabled = true)
         {
             this.id = id;
             this.rect = rect;
             this.vAir = vAir;
             this.enabled = enabled;
+            this.startEnabled = enabled;
         }
     }
 
@@ -60,6 +64,22 @@ namespace KeepyUppy.Sim
                 AirZone z = _zones[i];
                 z.enabled = enabled;
                 _zones[i] = z;
+            }
+        }
+
+        /// <summary>
+        /// Puts every zone back to the state its level declared. Part of the synchronous
+        /// restart (GDD 8): a link that switched a zone must not outlive the attempt.
+        /// </summary>
+        public void ResetStates()
+        {
+            for (int i = 0; i < _zones.Count; i++)
+            {
+                AirZone zone = _zones[i];
+                if (zone.enabled == zone.startEnabled) continue;
+
+                zone.enabled = zone.startEnabled;
+                _zones[i] = zone;
             }
         }
 

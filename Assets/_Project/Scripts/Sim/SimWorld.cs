@@ -145,7 +145,11 @@ namespace KeepyUppy.Sim
             Hits.Reset();
 
             // Entity motion is derived from the step counter, so this only clears the state
-            // that genuinely accumulates — a lamp's exposure (EntityPath).
+            // that genuinely accumulates — a lamp's exposure — plus the arm/disarm flags a
+            // link may have written (GDD 9.3). Triggers first, so nothing re-applies while
+            // the entities and zones are being put back.
+            Triggers.Reset();
+            Air.ResetStates();
             Entities.Reset();
             Entities.Step(0, Air);
 
@@ -235,6 +239,12 @@ namespace KeepyUppy.Sim
             // The level is allowed the last word; GDD 8's generosity is in the accept volume,
             // not in letting a pop be overridden by arriving.
             if (!IsDead) CheckExit();
+
+            // Last, after contact and the exit check. A trap armed by the player's own
+            // movement must not materialise inside the body that armed it in the frame it
+            // armed it — that is a death with no frame in which it was avoidable (GDD 8).
+            // Effects therefore land on the next step; delay 0 means next step, not this one.
+            Triggers.Step(step, Player.Position, HasPlayer, Balloon.Position, Entities, Air);
 
             Clock.Advance();
         }

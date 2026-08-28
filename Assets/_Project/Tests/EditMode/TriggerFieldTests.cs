@@ -279,5 +279,54 @@ namespace KeepyUppy.SimTests
 
             Assert.AreEqual(0, field.PendingCount, "a restart drops a delay in flight");
         }
+        /// <summary>
+        /// 200 steps is chosen, not arbitrary: BuildTrapRoom's scripted player enters the
+        /// region on step 71 (the bar arms on 72, the gust switches on 96) and then walks
+        /// into the bar it armed and dies around step 288, which restarts the room and clears
+        /// the very state these tests are about. 200 sits comfortably inside that window.
+        /// </summary>
+        const int ArmedStep = 200;
+
+        [Test]
+        public void Restart_PutsAnArmedTrapBackToDormant()
+        {
+            SimWorld world = SimTestHelpers.BuildTrapRoom(1337);
+
+            Assert.IsFalse(world.Entities.Find("bar").Active, "starts dormant");
+
+            // The scripted run walks into the trigger region and arms it.
+            world.Tick(ArmedStep);
+            Assert.IsTrue(world.Entities.Find("bar").Active, "the run should have armed it");
+            Assert.IsTrue(world.Triggers[0].Fired, "the region should have fired");
+
+            world.Restart();
+
+            Assert.IsFalse(world.Entities.Find("bar").Active,
+                           "the room the player retries must be the room they died in");
+            Assert.IsFalse(world.Triggers[0].Fired);
+        }
+
+        [Test]
+        public void Restart_PutsASwitchedZoneBackToItsStartState()
+        {
+            SimWorld world = SimTestHelpers.BuildTrapRoom(1337);
+
+            world.Tick(ArmedStep);
+
+            Assert.IsTrue(ZoneEnabled(world, "z_gust"), "the delayed link should have switched it on");
+
+            world.Restart();
+
+            Assert.IsFalse(ZoneEnabled(world, "z_gust"), "the gust is off again");
+        }
+
+        static bool ZoneEnabled(SimWorld world, string id)
+        {
+            for (int i = 0; i < world.Air.Count; i++)
+                if (world.Air[i].id == id) return world.Air[i].enabled;
+
+            return false;
+        }
+
     }
 }

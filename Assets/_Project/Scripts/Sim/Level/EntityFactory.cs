@@ -99,6 +99,7 @@ namespace KeepyUppy.Sim.Level
                     break;
             }
 
+            entity.StartActive = entity.Active;
             entity.Reset();
             return entity;
         }

@@ -51,6 +51,12 @@ namespace KeepyUppy.Sim.Entities
         /// </summary>
         public bool Active = true;
 
+        /// <summary>
+        /// What Active returns to on a restart. A link can flip Active mid-run (GDD 9.3), and
+        /// without this the room the player retries would not be the room they died in.
+        /// </summary>
+        public bool StartActive = true;
+
         // --- Run state: everything here must be reset by Reset() and covered by the
         //     replay-equality test (CLAUDE.md). Position is derived, not accumulated. ---
 
@@ -64,6 +70,7 @@ namespace KeepyUppy.Sim.Entities
 
         public void Reset()
         {
+            Active = StartActive;
             ExposureFrames = 0;
             Position = Points != null && Points.Length > 0 ? Points[0] : Vector2.zero;
             KillEnd = Position;
