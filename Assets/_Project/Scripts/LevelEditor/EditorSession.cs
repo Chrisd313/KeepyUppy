@@ -221,6 +221,10 @@ namespace KeepyUppy.LevelEditing
 
             // The selection may have been deleted by the edit we just reversed.
             if (FindEntity(SelectedEntityId) == null) SelectedEntityId = null;
+            // Same for the zone selection: an undo that removes the selected zone must not
+            // leave the id pointing at something that is gone, or the next Delete keypress
+            // pushes an undo entry for a deletion that cannot happen.
+            if (FindZone(SelectedZoneId) == null) SelectedZoneId = null;
         }
 
         // ------------------------------------------------------------------ tiles

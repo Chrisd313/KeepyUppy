@@ -351,5 +351,19 @@ namespace KeepyUppy.SimTests
             Assert.IsTrue(session.UndoEdit());
             Assert.AreEqual(new[] { 20f, 1f, 6f, 10f }, session.FindZone("z01").rect);
         }
+
+        [Test]
+        public void UndoingAZoneCreation_ClearsTheDanglingSelection()
+        {
+            var session = new EditorSession();
+
+            session.BeginEdit();
+            session.AddZone(new Rect(20f, 1f, 6f, 10f));
+
+            Assert.AreEqual("z01", session.SelectedZoneId);
+            Assert.IsTrue(session.UndoEdit());
+
+            Assert.IsNull(session.SelectedZoneId, "the selected zone no longer exists");
+        }
     }
 }
