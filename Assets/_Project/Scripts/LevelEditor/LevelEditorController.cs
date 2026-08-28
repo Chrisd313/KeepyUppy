@@ -62,6 +62,17 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         Vector2Int _zoneAnchor;
 
+        /// <summary>Which corner handle the current trigger drag has hold of, if any.</summary>
+        ZoneCorner _triggerCorner;
+
+        Vector2Int _triggerAnchor;
+
+        /// <summary>Cursor-to-bottom-left offset, so a moved trigger does not jump to the cursor.</summary>
+        Vector2 _triggerDragOffset;
+
+        /// <summary>Drag-in-progress creates a trigger rather than moving one.</summary>
+        bool _triggerCreating;
+
         // Overlays
         bool _showPanel = true;
         bool _showGrid = true;
@@ -198,8 +209,10 @@ namespace KeepyUppy.LevelEditing
             if (kb.digit4Key.wasPressedThisFrame) Session.Tool = EditorTool.Zone;
             if (kb.digit5Key.wasPressedThisFrame) Session.Tool = EditorTool.Path;
             if (kb.pKey.wasPressedThisFrame) Session.Tool = EditorTool.Place;
+            if (kb.digit8Key.wasPressedThisFrame) Session.Tool = EditorTool.Trigger;
 
             if (Session.Tool != EditorTool.Zone) _zoneForceNew = false;
+            if (Session.Tool != EditorTool.Trigger) { _triggerCorner = ZoneCorner.None; _triggerCreating = false; }
 
             // A toggle, not a one-way arm, so it can be cancelled without Escape - which is
             // the shell's Back (KeyboardShellInput) and reserved by CLAUDE.md's keybind list.
@@ -237,6 +250,14 @@ namespace KeepyUppy.LevelEditing
                 SyncDynamic();
                 _status = "deleted zone";
             }
+
+            if (kb.deleteKey.wasPressedThisFrame && Session.Tool == EditorTool.Trigger
+                && Session.SelectedTriggerId != null)
+            {
+                Session.BeginEdit();
+                Session.DeleteTrigger(Session.SelectedTriggerId);
+                SyncDynamic();
+            }
         }
 
         void HandleMouse()
@@ -268,6 +289,7 @@ namespace KeepyUppy.LevelEditing
                 case EditorTool.Zone: ZoneTool(mouse, world); break;
                 case EditorTool.Path: PathTool(mouse, world); break;
                 case EditorTool.Place: PlaceTool(mouse, world); break;
+                case EditorTool.Trigger: TriggerTool(mouse, world); break;
             }
         }
 
@@ -434,6 +456,100 @@ namespace KeepyUppy.LevelEditing
                 _status = _zoneCorner != ZoneCorner.None ? "resized zone" : "moved zone";
                 _dragging = false;
                 _zoneCorner = ZoneCorner.None;
+            }
+        }
+
+        /// <summary>
+        /// Trigger rects (GDD 9.3). Identical in shape to ZoneTool and deliberately so: both
+        /// are tile rects on the same grid, so both route through ZoneGeometry and an author
+        /// who knows one tool knows the other.
+        /// </summary>
+        void TriggerTool(Mouse mouse, Vector2 world)
+        {
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                LevelTrigger hit = Session.TriggerAt(world);
+                if (hit != null)
+                {
+                    Session.BeginEdit();
+                    Session.DeleteTrigger(hit.id);
+                    SyncDynamic();
+                    _status = "deleted trigger";
+                }
+
+                return;
+            }
+
+            if (mouse.leftButton.wasPressedThisFrame)
+            {
+                LevelTrigger selected = Session.FindTrigger(Session.SelectedTriggerId);
+
+                _triggerCorner = selected != null
+                    ? ZoneGeometry.HandleAt(ZoneGeometry.RectOf(selected.rect), world, ZoneHandleRadius)
+                    : ZoneCorner.None;
+
+                LevelTrigger hit = Session.TriggerAt(world);
+
+                if (_triggerCorner != ZoneCorner.None)
+                {
+                    _triggerAnchor = ZoneGeometry.AnchorOf(ZoneGeometry.RectOf(selected.rect), _triggerCorner);
+                    Session.BeginEdit();
+                    _triggerCreating = false;
+                    _dragging = true;
+                }
+                else if (hit != null)
+                {
+                    Session.SelectTrigger(hit.id);
+                    Rect rect = ZoneGeometry.RectOf(hit.rect);
+                    _triggerDragOffset = new Vector2(rect.xMin, rect.yMin) - world;
+                    Session.BeginEdit();
+                    _triggerCreating = false;
+                    _dragging = true;
+                }
+                else
+                {
+                    _dragStart = GridCursor.ToTile(world);
+                    _triggerCreating = true;
+                    _dragging = true;
+                }
+            }
+
+            if (!_dragging) return;
+
+            // A create drag resolves on release, so the author sees the rect they dragged
+            // rather than one that grew out of the first tile.
+            if (_triggerCreating)
+            {
+                if (!mouse.leftButton.wasReleasedThisFrame) return;
+
+                Session.BeginEdit();
+                LevelTrigger created =
+                    Session.AddTrigger(ZoneGeometry.Normalise(_dragStart, GridCursor.ToTile(world)));
+                SyncDynamic();
+
+                _dragging = false;
+                _triggerCreating = false;
+                _status = $"added {created.id}";
+                return;
+            }
+
+            LevelTrigger dragged = Session.FindTrigger(Session.SelectedTriggerId);
+            if (dragged?.rect == null) { _dragging = false; return; }
+
+            Rect current = ZoneGeometry.RectOf(dragged.rect);
+
+            Rect updated = _triggerCorner != ZoneCorner.None
+                ? ZoneGeometry.Normalise(_triggerAnchor, GridCursor.ToTile(world))
+                : ZoneGeometry.Move(current, world + _triggerDragOffset);
+
+            Session.SetTriggerRect(dragged.id, updated);
+            SyncDynamic();
+
+            if (mouse.leftButton.wasReleasedThisFrame)
+            {
+                _status = _triggerCorner != ZoneCorner.None ? "resized trigger" : "moved trigger";
+                _dragging = false;
+                _triggerCorner = ZoneCorner.None;
             }
         }
 
@@ -747,6 +863,7 @@ namespace KeepyUppy.LevelEditing
             if (GUILayout.Button("3 Select", GUILayout.Width(70f))) Session.Tool = EditorTool.Select;
             if (GUILayout.Button("4 Zone", GUILayout.Width(70f))) Session.Tool = EditorTool.Zone;
             if (GUILayout.Button("5 Path", GUILayout.Width(70f))) Session.Tool = EditorTool.Path;
+            if (GUILayout.Button("8 Trigger", GUILayout.Width(70f))) Session.Tool = EditorTool.Trigger;
             if (GUILayout.Button("P Place", GUILayout.Width(70f))) Session.Tool = EditorTool.Place;
             GUILayout.Space(20f);
             if (GUILayout.Button("Save (Ctrl+S)", GUILayout.Width(110f))) Save();
@@ -1189,6 +1306,7 @@ namespace KeepyUppy.LevelEditing
             if (_showGrid) DrawGrid();
             if (_showSafeArea) DrawSafeArea();
             DrawZones();
+            DrawTriggers();
             if (_showHitboxes) DrawHitboxes();
             DrawEntities();
         }
@@ -1398,6 +1516,48 @@ namespace KeepyUppy.LevelEditing
                 DrawHandle(new Vector2(rect.xMax, rect.yMax));
             }
         }
+
+        /// <summary>
+        /// Every trigger, whatever its type — the author must see what the player cannot. A
+        /// visible:true trigger is filled, an invisible one outlined, so the two are told
+        /// apart at a glance. Violet: never the reserved hazard hue (GDD 13.1).
+        /// </summary>
+        void DrawTriggers()
+        {
+            if (Session.Level.triggers == null) return;
+
+            foreach (LevelTrigger trigger in Session.Level.triggers)
+            {
+                if (trigger?.rect == null || trigger.rect.Length < 4) continue;
+
+                Rect rect = ZoneGeometry.RectOf(trigger.rect);
+                bool selected = trigger.id == Session.SelectedTriggerId;
+
+                if (trigger.visible)
+                {
+                    DrawWorldRect(rect, TriggerFill);
+                }
+                else
+                {
+                    Color edge = TriggerFill;
+                    edge.a = 0.55f;
+                    DrawWorldRect(new Rect(rect.xMin, rect.yMax - 0.08f, rect.width, 0.08f), edge);
+                    DrawWorldRect(new Rect(rect.xMin, rect.yMin, rect.width, 0.08f), edge);
+                    DrawWorldRect(new Rect(rect.xMin, rect.yMin, 0.08f, rect.height), edge);
+                    DrawWorldRect(new Rect(rect.xMax - 0.08f, rect.yMin, 0.08f, rect.height), edge);
+                }
+
+                if (!selected) continue;
+
+                DrawHandle(new Vector2(rect.xMin, rect.yMin));
+                DrawHandle(new Vector2(rect.xMax, rect.yMin));
+                DrawHandle(new Vector2(rect.xMin, rect.yMax));
+                DrawHandle(new Vector2(rect.xMax, rect.yMax));
+            }
+        }
+
+        /// <summary>Violet. Not hazard red, not balloon yellow (GDD 13.1).</summary>
+        static readonly Color TriggerFill = new Color(0.62f, 0.45f, 0.85f, 0.25f);
 
         void DrawHandle(Vector2 corner)
         {
