@@ -365,5 +365,31 @@ namespace KeepyUppy.SimTests
 
             Assert.IsNull(session.SelectedZoneId, "the selected zone no longer exists");
         }
+
+        [Test]
+        public void SelectingAZone_ClearsTheExitSelection()
+        {
+            var session = new EditorSession();
+            session.SelectExit();
+
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+
+            Assert.IsFalse(session.ExitSelected, "a zone and the exit must not both be selected");
+            Assert.AreEqual("z01", session.SelectedZoneId);
+        }
+
+        [Test]
+        public void SelectingTheExit_ClearsTheZoneSelection()
+        {
+            // Otherwise the inspector's zone branch, which dispatches first, permanently
+            // shadows the exit inspector.
+            var session = new EditorSession();
+            session.AddZone(new Rect(4f, 4f, 2f, 2f));
+
+            session.SelectExit();
+
+            Assert.IsNull(session.SelectedZoneId);
+            Assert.IsTrue(session.ExitSelected);
+        }
     }
 }

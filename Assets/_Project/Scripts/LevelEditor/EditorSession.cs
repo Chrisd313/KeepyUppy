@@ -383,9 +383,22 @@ namespace KeepyUppy.LevelEditing
             var zones = new List<LevelZone>(Level.zones ?? new LevelZone[0]) { zone };
             Level.zones = zones.ToArray();
 
-            SelectedZoneId = zone.id;
+            SelectZone(zone.id);
             Dirty = true;
             return zone;
+        }
+
+        /// <summary>
+        /// Selects a zone, clearing the exit selection.
+        ///
+        /// The three selections are mutually exclusive because the inspector dispatches on
+        /// them in order: leaving a stale one set makes a later branch unreachable, and the
+        /// author sees the wrong panel with no way to get the right one back.
+        /// </summary>
+        public void SelectZone(string id)
+        {
+            SelectedZoneId = id;
+            ExitSelected = false;
         }
 
         /// <summary>
@@ -448,6 +461,7 @@ namespace KeepyUppy.LevelEditing
         {
             ExitSelected = true;
             SelectedEntityId = null;
+            SelectedZoneId = null;
         }
 
         public void MoveExit(Vector2 world)

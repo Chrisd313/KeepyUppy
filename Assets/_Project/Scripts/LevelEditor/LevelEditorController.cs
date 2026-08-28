@@ -368,7 +368,7 @@ namespace KeepyUppy.LevelEditing
                 }
                 else if (hit != null)
                 {
-                    Session.SelectedZoneId = hit.id;
+                    Session.SelectZone(hit.id);
                     Rect rect = ZoneGeometry.RectOf(hit.rect);
                     _zoneDragOffset = new Vector2(rect.xMin, rect.yMin) - world;
                     Session.BeginEdit();
