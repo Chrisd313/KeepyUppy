@@ -118,7 +118,10 @@ namespace KeepyUppy.SimTests
             {
                 int hash = (int)2166136261;
                 for (int i = 0; i < entities.Count; i++)
+                {
                     hash = (hash ^ (entities[i].Active ? 1 : 0)) * 16777619;
+                    hash = (hash ^ entities[i].ArmedStep) * 16777619;
+                }
 
                 for (int i = 0; i < air.Count; i++)
                     hash = (hash ^ (air[i].enabled ? 1 : 0)) * 16777619;

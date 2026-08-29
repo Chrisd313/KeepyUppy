@@ -148,13 +148,13 @@ namespace KeepyUppy.Sim.Triggers
                     continue;
                 }
 
-                Apply(_links[item.link], entities, air);
+                Apply(_links[item.link], entities, air, step);
             }
 
             _pending.RemoveRange(keep, _pending.Count - keep);
         }
 
-        static void Apply(SimLink link, EntityField entities, AirField air)
+        static void Apply(SimLink link, EntityField entities, AirField air, int step)
         {
             if (link.Action == LinkAction.Inert || link.ToIds == null) return;
 
@@ -166,7 +166,9 @@ namespace KeepyUppy.Sim.Triggers
                 SimEntity entity = entities?.Find(id);
                 if (entity != null)
                 {
-                    entity.Active = Next(link.Action, entity.Active);
+                    // step + 1: this runs at the END of the step, so the first step the
+                    // entity is actually placed on is the next one. Its path starts there.
+                    entity.SetActive(Next(link.Action, entity.Active), step + 1);
                     continue;
                 }
 

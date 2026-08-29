@@ -287,6 +287,80 @@ namespace KeepyUppy.SimTests
         /// </summary>
         const int ArmedStep = 200;
 
+        /// <summary>
+        /// A path is measured from the step the entity was ARMED, not from step 0.
+        ///
+        /// Evaluating the raw world step means a saw armed ten seconds in is placed where it
+        /// would have been had it been running the whole time — thirty metres of path in one
+        /// step. On screen that is a saw teleporting to the far end of its route and then
+        /// resuming, which is the bug this pins.
+        /// </summary>
+        [Test]
+        public void ArmedSaw_StartsItsPathWhereItWasPlaced_NotWhereTheClockSaysItWouldBe()
+        {
+            var air = new AirField();
+            var entities = new EntityField();
+
+            entities.Add(new SimEntity
+            {
+                Id = "saw", Kind = EntityKind.Saw, Radius = 0.6f, Speed = 4f,
+                Mode = PathMode.PingPong,
+                Points = new[] { new Vector2(4f, 8f), new Vector2(12f, 8f) },
+                Active = false, StartActive = false,
+            }, air);
+
+            var field = new TriggerField();
+            field.Add(Region("t01", once: true));
+            field.AddLink(new SimLink
+            {
+                FromIndex = 0, ToIds = new[] { "saw" }, Action = LinkAction.On, DelaySteps = 0,
+            });
+
+            // Sleep well past the point where a running saw would have crossed and turned back.
+            for (int step = 0; step < 300; step++)
+            {
+                entities.Step(step, air);
+                field.Step(step, new Vector2(0f, 2f), true, Vector2.zero, entities, air);
+            }
+
+            Assert.AreEqual(new Vector2(4f, 8f), entities.Find("saw").Position, "parked while dormant");
+
+            // Step 300 fires the trigger. The link is queued for 301 and applied when that
+            // step is drained, arming the saw for 302 — the first step it is placed on.
+            entities.Step(300, air);
+            field.Step(300, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+
+            entities.Step(301, air);
+            field.Step(301, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+
+            Assert.IsTrue(entities.Find("saw").Active, "the link should have armed it");
+            Assert.AreEqual(302, entities.Find("saw").ArmedStep, "armed for the step it first moves on");
+
+            entities.Step(302, air);
+            Assert.AreEqual(new Vector2(4f, 8f), entities.Find("saw").Position,
+                            "an armed saw starts at its first waypoint, not mid-route");
+
+            // And from there it walks its own path at its own speed: 4 m/s for 30 steps is 2 m.
+            for (int step = 303; step <= 332; step++) entities.Step(step, air);
+
+            Assert.AreEqual(6f, entities.Find("saw").Position.x, 0.0001f, "half a second of travel");
+            Assert.AreEqual(8f, entities.Find("saw").Position.y, 0.0001f);
+        }
+
+        [Test]
+        public void Restart_ClearsTheArmedStep_SoTheReplayIsIdentical()
+        {
+            SimWorld world = SimTestHelpers.BuildTrapRoom(1337);
+
+            world.Tick(ArmedStep);
+            Assert.IsTrue(world.Entities.Find("bar").Active, "armed before the restart");
+
+            world.Restart();
+
+            Assert.AreEqual(0, world.Entities.Find("bar").ArmedStep,
+                            "a stale armed step would offset the path on the retry");
+        }
+
         [Test]
         public void Restart_PutsAnArmedTrapBackToDormant()
         {
