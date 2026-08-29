@@ -30,7 +30,7 @@ namespace KeepyUppy.Runtime
 
             // Sub-pixel, like the balloon (GDD 13.2). Only the tile grid is snapped, and
             // interpolated between fixed steps for the same reason the balloon is.
-            Vector2 p = Driver != null ? _interp.Sample(Driver.Alpha) : Body.Position;
+            Vector2 p = Driver != null && _interp.Started ? _interp.Sample(Driver.Alpha) : Body.Position;
 
             transform.localPosition = new Vector3(p.x, p.y, transform.localPosition.z);
             transform.localScale = new Vector3(Body.HalfWidth * 2f, Body.HalfHeight * 2f, 1f);

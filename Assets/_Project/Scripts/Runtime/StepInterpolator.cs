@@ -41,6 +41,18 @@ namespace KeepyUppy.Runtime
         public Vector2 Current => _curr;
 
         /// <summary>
+        /// Whether any step has been recorded yet. Until one has, both ends of the tween are
+        /// the origin, so <see cref="Sample"/> returns the bottom-left corner of the room and
+        /// a view that draws it puts the body there for a frame.
+        ///
+        /// Views are built before the first FixedUpdate runs, and an entity's views are
+        /// rebuilt whenever the entity count changes, so this is not an edge case — it is
+        /// every level load. A view must fall back to the live simulation position while this
+        /// is false rather than drawing a tween that has nothing in it.
+        /// </summary>
+        public bool Started => _started;
+
+        /// <summary>
         /// Record one fixed step. <paramref name="clockStep"/> is the world's own step
         /// counter, which runs backwards on a restart — the body teleports to spawn there,
         /// and tweening across that would drag it over the room on the exact 200 ms path

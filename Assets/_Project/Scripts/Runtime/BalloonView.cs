@@ -42,7 +42,7 @@ namespace KeepyUppy.Runtime
             // balloon moves 0.67 px per frame, so a render frame that lands inside a step and
             // draws the previous position again is a visible hitch - it reads as the balloon
             // bouncing off nothing in mid-air.
-            Vector2 p = Driver != null ? _interp.Sample(Driver.Alpha) : Body.Position;
+            Vector2 p = Driver != null && _interp.Started ? _interp.Sample(Driver.Alpha) : Body.Position;
 
             transform.localPosition = new Vector3(p.x, p.y, transform.localPosition.z);
 
