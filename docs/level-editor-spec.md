@@ -143,10 +143,18 @@ One JSON file per level, human-readable, one file per level, committed to git. T
     }
   ],
 
+  "panels": [
+    {
+      "id": "p01",
+      "rect": [16, 0, 4, 1],             // x, y, w, h in tiles — rounded to whole tiles
+      "start_state": "on"                // on|off — whether its tiles are present at the start
+    }
+  ],
+
   "links": [
     {
       "from": "trigger_a",
-      "to": ["z01", "e01"],
+      "to": ["z01", "e01", "p01"],
       "action": "toggle",               // toggle|on|off|arm|fire
       "delay": 0.4
     }
@@ -270,6 +278,7 @@ Immediate-mode / debug UI only (Unity IMGUI, Godot Control nodes, or Dear ImGui)
 | Link | `6` | Click a trigger then a target to wire it, right-click an arrow to unwire it. Targets append to one link per source. |
 | Place | `P` | Click drops the palette entity at the cursor. Numbered 7 internally so the reserved digit bindings above do not shuffle. |
 | Trigger | `8` | Drag empty space to create, drag a trigger to move, drag a corner handle to resize. `Delete` or right-click removes one. Type, rect, `once`, `visible`, `seconds` and the outgoing link in the inspector. |
+| Panel | `9` | Drag a rect of tiles a link can take away. Hatched when it starts hidden. |
 | Eyedropper | `alt` | Held — picks the tile/entity under the cursor. |
 
 ### Editing keys
@@ -364,6 +373,9 @@ Cheap to write, saves hours. Emit warnings in a panel, never block saving.
 - A trigger nothing links from
 - Link action parsed but not simulated
 - `par_touches` unset
+- Panel with a zero-area rect
+- Nothing links to a panel — it can never switch
+- Panel rect covers no tiles — it would hide nothing
 
 Do **not** attempt automated solvability checking. It's a research project and it will be wrong.
 
@@ -456,3 +468,67 @@ A fired link is undone by `Restart()`: `SimEntity.StartActive` and `AirField.Res
 put every entity and zone back to what the level file declared before `Triggers.Reset()` runs,
 so the room a retry drops you into is the room you died in, not the one your last attempt left
 armed.
+
+### Tile panels — 2026-08-29, as built
+
+A panel is a named rect of tiles a link can take away — GDD §9.3's "floor that falls away not
+to kill you, but so you can't reach the balloon", the first betrayal trap the trigger work
+above could not build because it never touched geometry.
+
+**A panel masks tiles; it never edits them.** `TileGrid` keeps the authored tiles exactly as
+painted and layers a bitmask on top (`SetMasked` / `ClearMask` / `IsMasked`). The indexer
+reports a masked cell as `Empty` no matter what is actually painted there; `BaseAt` bypasses
+the mask and reads what was authored. `PanelField.Apply` rebuilds the whole mask from every
+panel's current flag each time it runs rather than toggling cells one at a time — that is what
+makes overlapping panels compose for free (a cell is hidden the moment any panel covering it
+is off, with no ordering to get wrong) and keeps a restart's cost to one pass over a handful of
+rects rather than per-cell bookkeeping (GDD §8's 200 ms budget).
+
+**`ToRows` — the level's save path — serialises `BaseAt`, never the masked view.** This was a
+mid-plan correction, not the original design: the editor's canvas and the running world share
+one `TileGrid`, which is what lets a dragged tile show up immediately, but it also meant that
+serialising the masked indexer baked whatever a panel happened to be hiding *at that instant*
+into the file — Tab-into-play, an undo snapshot, and an ordinary save could each turn an
+authored tile into a permanent hole. A panel hides tiles; it must never be able to delete them.
+
+**Links switch panels the same way they switch zones and entities.** `TriggerField.Apply`
+resolves a link's target id against entities first, then air zones, then panels last — a panel
+is geometry, and nothing else in the level can share its id. `on`, `off` and `toggle` all
+apply (`PanelField.SetEnabled`); `On` shows the panel's tiles, `Off` takes them away.
+`start_state: "off"` (`LevelLoader.LoadPanels`) hides a panel from the first frame — an
+appearing platform rather than a disappearing one, the same schema field doing double duty
+zones already established.
+
+**Tiles that return can crush.** `SimWorld.CrushBodiesInReturningPanels` runs once per tick,
+after the mask is rebuilt from that step's link effects, and checks only the panels that just
+switched *on* — tiles leaving never hurt anyone, so only the off-to-on edge is recorded
+(`PanelField.TurnedOnThisStep`). Within a returning panel's rect it checks only the cells that
+actually hold a tile; a panel whose rect covers empty space crushes nothing. A body caught
+inside dies via `SimWorld.Kill(DeathCause.Crushed)` — the same single door every other death
+goes through, which is precisely why GDD §4.1's linked fate still holds without a special
+case here. The GDD §8 fairness shrink is deliberately not applied to a crush: the hazard is
+the tile arriving, not a hitbox the player was ever asked to read, and shrinking it would let
+a body sit visibly inside solid geometry and live.
+
+**The room's floor is now open.** `TileGrid`'s out-of-bounds branch returns `Empty` below
+`y = 0` and `Solid` on the other three sides — a mid-plan ruling, because a sealed box made a
+falling death impossible even once a panel could remove the floor under someone. Both bodies
+now die on falling out: the player via `DeathCause.PlayerFellOut` (pre-existing, and still a
+safety net that should be unreachable in a walled level) and the balloon via the new
+`DeathCause.BalloonLeftRoom`, reachable once a panel can take away a wall or the floor itself.
+
+**Falling debris is presentation only, and tracks the mask per cell, not per panel.**
+`PanelViewSync` compares `TileGrid.IsMasked` against the previous render frame for every cell
+in the room; a cell that went visible-to-hidden spawns one falling quad, whatever combination
+of panels caused it. An earlier per-panel model was tried and discarded — with overlapping
+panels, "which panel hid this cell" has to reason about what every other panel did and when,
+and that reasoning kept being wrong. Nothing here is readable by the simulation, so this is
+also the one place in the presentation layer allowed to use `Time.deltaTime` (the same
+exception `StepInterpolator` and `TimeControl` already carry) — determinism is untouched
+because the sim never observes it.
+
+**Editor:** `9` is the Panel tool — drag a rect of tiles, same gesture as Trigger on `8`.
+Selecting a panel shows its `id`, `rect` and `start_state` in the inspector
+(`PanelInspector`). A panel is drawn amber (not the trigger's violet, a hazard's red, or the
+balloon's yellow — GDD §13.1) and hatched when `start_state` is `"off"`, so the author can see
+geometry the player will not.

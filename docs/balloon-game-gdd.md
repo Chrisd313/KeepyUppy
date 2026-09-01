@@ -80,6 +80,13 @@ Without this law, the optimal strategy in every level is to stand under the ball
 
 There are no countdown timers. The balloon is always falling. All time pressure is emergent.
 
+**The balloon can now fall out of the room (2026-08-29).** Once tile panels (§9.1) can take a
+floor away, gravity running out is no longer bounded by a sealed box — a level with no floor
+tile under a stretch the balloon can reach lets it fall until it leaves the room and dies
+(`DeathCause.BalloonLeftRoom`), the same safety net the player has always had
+(`PlayerFellOut`). This should be unreachable in an ordinarily-walled level; it becomes real
+the moment a panel opens the bottom.
+
 ---
 
 ## 5. Controls & input — WORKING
@@ -421,6 +428,15 @@ Numeric form of the first rule, both sliders (§6.4): `player_bump_radius_bonus`
 Spikes, saws, crushers, moving platforms, disappearing floors, conveyors, ice, one-way platforms, glass panes, closing doors, pressure plates. Connective tissue. Necessary, not interesting.
 
 **Pressure plates deserve a note:** the balloon is too light to trigger them. Only the player can. This is the purest expression of §3's tug-of-war and should be used often.
+
+**Disappearing floors are built**, as tile panels (2026-08-29): a named rect of tiles that a
+link can take away or restore, masked rather than repainted so the authored geometry underneath
+is never lost. Crushers, closing doors and moving platforms are still deferred, and for a
+different reason than "not built yet" — they need moving-solid collision, which GDD §22's
+2026-08-24 entry already pushed out on design grounds ("what happens when a platform pushes you
+into a spike" being a design question, not a coding one). A vanishing tile sidesteps that
+question entirely: nothing pushes a body, geometry just stops being there, so a panel needed no
+collision work a crusher or a door still does.
 
 ### 9.2 Signature hazards
 

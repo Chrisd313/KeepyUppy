@@ -1,7 +1,7 @@
 # Tile panels — floors a trigger can take away — design
 
 **Date:** 2026-08-29
-**Status:** designed
+**Status:** built (2026-08-29)
 **Related:** `docs/superpowers/specs/2026-08-28-triggers-and-links-design.md` ·
 `docs/balloon-game-gdd.md` §4.1, §8, §9.1, §9.3 · `docs/level-editor-spec.md` §3, §4, §7
 

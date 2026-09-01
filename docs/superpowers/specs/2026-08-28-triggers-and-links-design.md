@@ -302,7 +302,11 @@ moment is legible in the frame it happens, and whether the one-step effect delay
 - Pressure plates and levers (physical trigger objects)
 - `balloon_touches`, `player_grounded`, `on_first_entry`, `lever`
 - `arm` and `fire` link actions
-- Tile-rect toggling: falling floors, closing doors, disappearing platforms
+- ~~Tile-rect toggling: falling floors, closing doors, disappearing platforms~~ **Built
+  2026-08-29** as tile panels (`docs/superpowers/specs/2026-08-29-tile-panels-design.md`).
+  Grouping it here with moving-solid collision was wrong: a vanishing tile never pushes a
+  body, so it needed none of the collision work a closing door or a moving platform still
+  does. Those two stay deferred; the floor does not.
 - Moving-solid collision, deferred on design grounds by GDD §22, 2026-08-24
 
 ## Documentation to update in the same commits
