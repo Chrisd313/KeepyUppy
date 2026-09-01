@@ -32,6 +32,13 @@ namespace KeepyUppy.LevelEditing
         /// bindings still mean what spec 4 says they mean when zones and links arrive.
         /// </summary>
         Place = 7,
+
+        /// <summary>
+        /// 8 — drag a trigger rect (GDD 9.3). Past Place because the spec's digit bindings
+        /// stop at 6 and shuffling them under the author's fingers is the one thing this enum
+        /// exists to prevent.
+        /// </summary>
+        Trigger = 8,
     }
 
     public enum EditorMode

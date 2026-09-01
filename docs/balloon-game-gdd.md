@@ -443,6 +443,11 @@ Three of the above are simulated: **saw** (generic tier, path-following, lethal 
 wind system of its own — GDD 6.2 has only one). The cat is deferred: "tracks, waits, lunges"
 is a behaviour tree, and it wants the mover working underneath it first.
 
+A fourth type joined 2026-08-28: the **spike bar** (§9.3's retractable trap), a capsule like
+the lamp's but lethal on contact and to both bodies — every tile spike kills the player, and a
+bar that did not would be a lie told by the same sprite. It stays a distinct entity type rather
+than a tile because a trigger needs an id to link to, and a tile has none.
+
 **Entity position is a pure function of the step counter**, evaluated from scratch each step
 rather than advanced by `+= v * dt`. That single decision means attempt 40 replays attempt 1
 by construction rather than by care (6.1), makes restart free — there is no motion state to
@@ -464,8 +469,13 @@ body. Crushers and moving platforms need moving-solid collision, and "what happe
 platform pushes you into a spike" is a design question rather than a coding one — its own
 session, alongside the triggers and links 9.3 needs.
 
-`start_state: dormant` is honoured now, so a level authored with a dormant hazard behaves;
-nothing arms it yet, because triggers do not exist.
+`start_state: dormant` is honoured, and as of 2026-08-28 triggers and links can arm what it
+leaves dormant: `player_region` and `balloon_region` region triggers, plus a `timer` trigger
+for a hazard armed by the clock rather than by the player, `on` / `off` / `toggle` links with a
+delay expressed in fixed steps, never seconds. A fired link is undone by `Restart()` — the
+entity and zone states a link wrote are put back to what the level file declared before the
+next attempt's first step runs, so the room the player retries is the room they died in, not
+the one their last attempt left armed.
 
 An entity type this build does not understand loads inert and is counted, never dropped. A
 level file outlives any one build, and an editor that silently deletes what it cannot parse

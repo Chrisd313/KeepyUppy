@@ -267,8 +267,9 @@ Immediate-mode / debug UI only (Unity IMGUI, Godot Control nodes, or Dear ImGui)
 | Select/move | `3` | Click entity to select. Drag to move. Shift-click multi-select. |
 | Zone | `4` | Drag empty space to create, drag a zone to move, drag a corner handle to resize. `N` toggles a forced create so an overlapping zone can be drawn. `Delete` or right-click removes one. Type, rect, `params` and `start_state` in the inspector. |
 | Path | `5` | With an entity selected, click to append waypoints. Drag a handle to move one, right-click to delete. Handle 0 is the entity and moves the whole trap. |
-| Link | `6` | Click source, then target. Drawn as an arrow. |
+| Link | `6` | Click a trigger then a target to wire it, right-click an arrow to unwire it. Targets append to one link per source. |
 | Place | `P` | Click drops the palette entity at the cursor. Numbered 7 internally so the reserved digit bindings above do not shuffle. |
+| Trigger | `8` | Drag empty space to create, drag a trigger to move, drag a corner handle to resize. `Delete` or right-click removes one. Type, rect, `once`, `visible`, `seconds` and the outgoing link in the inspector. |
 | Eyedropper | `alt` | Held — picks the tile/entity under the cursor. |
 
 ### Editing keys
@@ -357,6 +358,11 @@ Cheap to write, saves hours. Emit warnings in a panel, never block saving.
 - Exit `required_band` unreachable: no heat zone, cold zone or pump present that could get the balloon from `spawn.balloon_inflation` to the required band
 - Balloon spawn overlapping solid geometry or a hazard
 - Two `once: true` triggers with identical rects (usually a duplication mistake)
+- Trigger type parsed but not simulated (counted, never blocked)
+- Timer trigger with no `seconds` set — it can never fire
+- `player_region` / `balloon_region` trigger with a zero-area rect
+- A trigger nothing links from
+- Link action parsed but not simulated
 - `par_touches` unset
 
 Do **not** attempt automated solvability checking. It's a research project and it will be wrong.
@@ -401,16 +407,52 @@ Each phase should be independently useful. Don't start phase N+1 before N is bei
 | **3 — Inspect** | Inspector panel, entity params, paths, `phase`, multi-select, copy/paste, undo | 1 day |
 | | *Built 2026-08-24: inspector, params, paths, phase, retype, start_state. Multi-select and copy/paste still outstanding.* | |
 | **4 — Trap logic** | Zones, triggers, links, `start_state`, delays | 1 day |
+| | *Built 2026-08-28: triggers, links, delays and the spike bar. See "Triggers and links — 2026-08-28, as built" below.* | |
 | **5 — Time** | Pause, frame-step, slow-mo, input-recording rewind, ghost trails, teleport-test | 1 day |
 | **6 — Feedback** | Validation lint, metrics capture, death heatmap | 0.5 day |
 
 Phases 1 and 2 alone already pay for the whole tool.
 
-Zones and `start_state` are built (2026-08-28). Triggers, links and delays are not: they need
-a way to draw a relationship rather than a rectangle, which is a different problem and gets
-its own spec.
+Zones and `start_state` are built (2026-08-28). Triggers and links are built too, later the
+same day — the "way to draw a relationship rather than a rectangle" this section used to say
+they were waiting on turned out to be small: click a trigger, click a target, drag nothing.
 
 All six zone types are authorable, but `LevelLoader.LoadZones` reads only `type: "air"` — the
 other five parse, save and draw while doing nothing. The inspector marks them inert. When
 inflation (GDD §7.2) lands, `heat` and `cold` acquire behaviour and any level already using
 one changes.
+
+### Triggers and links — 2026-08-28, as built
+
+Two new schema fields ride in with triggers. `visible` defaults to `false`: GDD §9.3's
+workhorse is an *unmarked* region that fires when the player commits, so invisible is the
+default a level falls into rather than something an author has to opt into. `seconds` is
+timer-only and is converted to whole fixed steps at load (`SimClock.StepsIn`) — the region
+types ignore it — so nothing multiplies a fractional second during a run, the same reasoning
+§6.1 already applies to `delay`.
+
+Of the schema's seven trigger types, three are simulated: `player_region`, `balloon_region`
+and `timer`. The other four — `lever`, `balloon_touches`, `player_grounded`, `on_first_entry`
+— parse, save and round-trip like everything else this build does not understand yet; they
+load inert and are counted (`TriggerField.UnknownCount`), never silently dropped. Of the five
+link actions, `on`, `off` and `toggle` are simulated; `arm` and `fire` load inert the same way.
+The inspector marks both kinds of inert declaration on screen rather than hiding them.
+
+Firing is edge-triggered: a trigger fires on the false-to-true edge of its condition, never on
+every step the condition holds, the same shape `ScreenStack.ObserveWin` already uses and for
+the same reason — a level-triggered check is the one that shipped broken once already. `once:
+true` latches after its first fire; `once: false` re-fires on every re-entry, which is what a
+switch meant to stay live wants.
+
+**Effects land on the step *after* the trigger fires — `delay: 0` means next step, not this
+one.** `TriggerField.Step` runs last in `SimWorld.Tick`, after contact and the exit check, but
+"last" still is not "immediate": a trap armed by the player's own movement must not be able to
+materialise inside the body that armed it, in the frame it armed it — that would be a death
+with no frame in which it was avoidable (GDD §8). Queuing every fired link for
+`step + 1 + delaySteps` rather than applying it in place is what makes `delay: 0` a fairness
+floor instead of an instant kill.
+
+A fired link is undone by `Restart()`: `SimEntity.StartActive` and `AirField.ResetStates()`
+put every entity and zone back to what the level file declared before `Triggers.Reset()` runs,
+so the room a retry drops you into is the room you died in, not the one your last attempt left
+armed.

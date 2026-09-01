@@ -44,6 +44,11 @@ namespace KeepyUppy.Sim.Entities
 
             if (entity.Kind == EntityKind.Unknown) UnknownCount++;
 
+            // The state the level declared, captured before the first Reset() reads it back.
+            // Reset() restores Active from StartActive, so anything built with an object
+            // initialiser — a test room, or EntityFactory — is dormant on every attempt, not
+            // just the first (GDD 9.3).
+            entity.StartActive = entity.Active;
             entity.Reset();
             _entities.Add(entity);
 
@@ -143,10 +148,16 @@ namespace KeepyUppy.Sim.Entities
         }
 
         /// <summary>Arms or disarms a dormant entity. The hook GDD 9.3 triggers will use.</summary>
-        public void SetActive(string id, bool active)
+        /// <param name="step">
+        /// The step the entity starts moving on. A path is measured from here (SimEntity.
+        /// ArmedStep), so an armed saw starts at its first waypoint instead of wherever the
+        /// world clock says it would have reached. Defaults to zero for the callers that arm
+        /// something before the run starts.
+        /// </param>
+        public void SetActive(string id, bool active, int step = 0)
         {
             SimEntity entity = Find(id);
-            if (entity != null) entity.Active = active;
+            if (entity != null) entity.SetActive(active, step);
         }
     }
 }

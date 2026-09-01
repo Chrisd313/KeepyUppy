@@ -48,6 +48,13 @@ namespace KeepyUppy.LevelEditing
         public string SelectedZoneId;
 
         /// <summary>
+        /// The selected trigger. Mutually exclusive with the entity, zone and exit selections
+        /// for the same reason they are with each other: Delete tests each independently, so
+        /// two live selections means one keypress destroying two objects.
+        /// </summary>
+        public string SelectedTriggerId;
+
+        /// <summary>
         /// The exit is selected instead of an entity. Kept as a separate flag rather than a
         /// magic entity id: the gate is not an entity, and pretending otherwise would leak
         /// into the entity list, the id allocator and every foreach over it.
@@ -159,14 +166,14 @@ namespace KeepyUppy.LevelEditing
         /// <summary>
         /// Entity types offered by the palette.
         ///
-        /// The first three are simulated (GDD 9.2). The rest are placeable and round-trip
+        /// The first four are simulated (GDD 9.2). The rest are placeable and round-trip
         /// through the file, but have no behaviour yet — the props are GDD 10 and the cat is
         /// a behaviour tree of its own. EntityFactory decides what actually runs; this list
         /// only decides what can be placed.
         /// </summary>
         public static readonly string[] EntityTypes =
         {
-            "saw", "lamp", "fan", "cat", "prop_leafblower", "prop_trampoline", "prop_tape",
+            "saw", "lamp", "fan", "spike_bar", "cat", "prop_leafblower", "prop_trampoline", "prop_tape",
         };
 
         public void Load(LevelData level)
@@ -175,6 +182,7 @@ namespace KeepyUppy.LevelEditing
             Grid.LoadRows(Level.tiles ?? new string[0]);
             Undo.Clear();
             SelectedEntityId = null;
+            SelectedTriggerId = null;
             ExitSelected = false;
             Dirty = false;
         }
@@ -225,6 +233,7 @@ namespace KeepyUppy.LevelEditing
             // leave the id pointing at something that is gone, or the next Delete keypress
             // pushes an undo entry for a deletion that cannot happen.
             if (FindZone(SelectedZoneId) == null) SelectedZoneId = null;
+            if (FindTrigger(SelectedTriggerId) == null) SelectedTriggerId = null;
         }
 
         // ------------------------------------------------------------------ tiles
@@ -320,6 +329,8 @@ namespace KeepyUppy.LevelEditing
             entities.Remove(entity);
             Level.entities = entities.ToArray();
 
+            RemoveLinksReferencing(id);
+
             if (SelectedEntityId == id) SelectedEntityId = null;
             Dirty = true;
             return true;
@@ -389,9 +400,9 @@ namespace KeepyUppy.LevelEditing
         }
 
         /// <summary>
-        /// Selects a zone, clearing the entity and exit selections.
+        /// Selects a zone, clearing the entity, trigger and exit selections.
         ///
-        /// The three are mutually exclusive because more than the inspector reads them: the
+        /// The four are mutually exclusive because more than the inspector reads them: the
         /// Delete key tests each independently, so two live selections means one keypress
         /// destroying two objects.
         /// </summary>
@@ -399,13 +410,14 @@ namespace KeepyUppy.LevelEditing
         {
             SelectedZoneId = id;
             SelectedEntityId = null;
+            SelectedTriggerId = null;
             ExitSelected = false;
         }
 
         /// <summary>
-        /// Selects an entity, clearing the zone and exit selections.
+        /// Selects an entity, clearing the zone, trigger and exit selections.
         ///
-        /// The three are mutually exclusive because more than the inspector reads them: the
+        /// The four are mutually exclusive because more than the inspector reads them: the
         /// Delete key tests each independently, so two live selections means one keypress
         /// destroying two objects.
         /// </summary>
@@ -413,6 +425,7 @@ namespace KeepyUppy.LevelEditing
         {
             SelectedEntityId = id;
             SelectedZoneId = null;
+            SelectedTriggerId = null;
             ExitSelected = false;
         }
 
@@ -473,6 +486,8 @@ namespace KeepyUppy.LevelEditing
             zones.Remove(zone);
             Level.zones = zones.ToArray();
 
+            RemoveLinksReferencing(id);
+
             if (SelectedZoneId == id) SelectedZoneId = null;
             Dirty = true;
             return true;
@@ -488,6 +503,366 @@ namespace KeepyUppy.LevelEditing
             }
 
             return "z" + Level.zones.Length;
+        }
+
+        // ----------------------------------------------------------------- triggers
+
+        public LevelTrigger FindTrigger(string id)
+        {
+            if (string.IsNullOrEmpty(id) || Level.triggers == null) return null;
+
+            foreach (LevelTrigger trigger in Level.triggers)
+                if (trigger != null && trigger.id == id) return trigger;
+
+            return null;
+        }
+
+        /// <summary>
+        /// The trigger under a world position, smallest first — the same rule as ZoneAt, and
+        /// for the same reason: a small trigger drawn inside a room-wide one must stay
+        /// selectable.
+        /// </summary>
+        public LevelTrigger TriggerAt(Vector2 world)
+        {
+            if (Level.triggers == null) return null;
+
+            LevelTrigger best = null;
+            float bestArea = float.MaxValue;
+
+            foreach (LevelTrigger trigger in Level.triggers)
+            {
+                if (trigger?.rect == null || trigger.rect.Length < 4) continue;
+
+                Rect rect = ZoneGeometry.RectOf(trigger.rect);
+                if (!rect.Contains(world)) continue;
+
+                float area = rect.width * rect.height;
+                if (area >= bestArea) continue;
+
+                bestArea = area;
+                best = trigger;
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// A new trigger. Defaults to an invisible once:true player region — GDD 9.3's
+        /// workhorse, and the thing an author reaches for nine times in ten.
+        /// </summary>
+        public LevelTrigger AddTrigger(Rect rect, string type = "player_region")
+        {
+            var trigger = new LevelTrigger
+            {
+                id = NextTriggerId(),
+                type = type,
+                rect = ZoneGeometry.ToArray(ZoneGeometry.Snap(rect)),
+                once = true,
+                visible = false,
+            };
+
+            var triggers = new List<LevelTrigger>(Level.triggers ?? new LevelTrigger[0]) { trigger };
+            Level.triggers = triggers.ToArray();
+
+            SelectTrigger(trigger.id);
+            Dirty = true;
+            return trigger;
+        }
+
+        /// <summary>
+        /// Selects a trigger, clearing the entity, zone and exit selections.
+        ///
+        /// The four are mutually exclusive because more than the inspector reads them: the
+        /// Delete key tests each independently, so two live selections means one keypress
+        /// destroying two objects.
+        /// </summary>
+        public void SelectTrigger(string id)
+        {
+            SelectedTriggerId = id;
+            SelectedEntityId = null;
+            SelectedZoneId = null;
+            ExitSelected = false;
+        }
+
+        public void SetTriggerRect(string id, Rect rect)
+        {
+            LevelTrigger trigger = FindTrigger(id);
+            if (trigger == null) return;
+
+            trigger.rect = ZoneGeometry.ToArray(ZoneGeometry.Snap(rect));
+            Dirty = true;
+        }
+
+        public void SetTriggerType(string id, string type)
+        {
+            LevelTrigger trigger = FindTrigger(id);
+            if (trigger == null || trigger.type == type) return;
+
+            trigger.type = type;
+            Dirty = true;
+        }
+
+        public void SetTriggerOnce(string id, bool once)
+        {
+            LevelTrigger trigger = FindTrigger(id);
+            if (trigger == null || trigger.once == once) return;
+
+            trigger.once = once;
+            Dirty = true;
+        }
+
+        public void SetTriggerVisible(string id, bool visible)
+        {
+            LevelTrigger trigger = FindTrigger(id);
+            if (trigger == null || trigger.visible == visible) return;
+
+            trigger.visible = visible;
+            Dirty = true;
+        }
+
+        public void SetTriggerSeconds(string id, float seconds)
+        {
+            LevelTrigger trigger = FindTrigger(id);
+            if (trigger == null || Mathf.Approximately(trigger.seconds, seconds)) return;
+
+            trigger.seconds = seconds;
+            Dirty = true;
+        }
+
+        /// <summary>
+        /// Deletes a trigger and every link that fired from it. An orphaned link is a
+        /// validator error, and leaving an author to clean up after their own delete is how a
+        /// level file rots.
+        /// </summary>
+        public bool DeleteTrigger(string id)
+        {
+            LevelTrigger trigger = FindTrigger(id);
+            if (trigger == null) return false;
+
+            var triggers = new List<LevelTrigger>(Level.triggers);
+            triggers.Remove(trigger);
+            Level.triggers = triggers.ToArray();
+
+            var links = new List<LevelLink>(Level.links ?? new LevelLink[0]);
+            links.RemoveAll(link => link != null && link.from == id);
+            Level.links = links.ToArray();
+
+            // A trigger can also be another link's TARGET (TargetCentre resolves triggers
+            // just like entities and zones), so the source-side removal above is not enough.
+            RemoveLinksReferencing(id);
+
+            if (SelectedTriggerId == id) SelectedTriggerId = null;
+            Dirty = true;
+            return true;
+        }
+
+        /// <summary>Lowest unused tNN id, matching how entity and zone ids are allocated.</summary>
+        string NextTriggerId()
+        {
+            for (int i = 1; i < 1000; i++)
+            {
+                string candidate = "t" + i.ToString("00");
+                if (FindTrigger(candidate) == null) return candidate;
+            }
+
+            return "t" + (Level.triggers?.Length ?? 0);
+        }
+
+        // -------------------------------------------------------------------- links
+
+        /// <summary>The link fired by a trigger, or null. One link per source, many targets.</summary>
+        public LevelLink LinksFrom(string from)
+        {
+            if (string.IsNullOrEmpty(from) || Level.links == null) return null;
+
+            foreach (LevelLink link in Level.links)
+                if (link != null && link.from == from) return link;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Wires a trigger to a target. A second target on the same trigger is appended to the
+        /// existing link rather than making another one: two links from one source with the
+        /// same action would be a distinction the author cannot see on screen.
+        /// </summary>
+        public LevelLink AddLink(string from, string to)
+        {
+            if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to)) return null;
+            if (FindTrigger(from) == null) return null;
+
+            LevelLink link = LinksFrom(from);
+
+            if (link == null)
+            {
+                link = new LevelLink { from = from, to = new[] { to }, action = "toggle" };
+                var links = new List<LevelLink>(Level.links ?? new LevelLink[0]) { link };
+                Level.links = links.ToArray();
+                Dirty = true;
+                return link;
+            }
+
+            var targets = new List<string>(link.to ?? new string[0]);
+            if (targets.Contains(to)) return link;
+
+            targets.Add(to);
+            link.to = targets.ToArray();
+            Dirty = true;
+            return link;
+        }
+
+        public void SetLinkAction(string from, string action)
+        {
+            LevelLink link = LinksFrom(from);
+            if (link == null || link.action == action) return;
+
+            link.action = action;
+            Dirty = true;
+        }
+
+        public void SetLinkDelay(string from, float delay)
+        {
+            LevelLink link = LinksFrom(from);
+            if (link == null || Mathf.Approximately(link.delay, delay)) return;
+
+            link.delay = Mathf.Max(delay, 0f);
+            Dirty = true;
+        }
+
+        /// <summary>Unwires one target. The link goes when its last target does.</summary>
+        public bool RemoveLink(string from, string to)
+        {
+            LevelLink link = LinksFrom(from);
+            if (link == null) return false;
+
+            var targets = new List<string>(link.to ?? new string[0]);
+            if (!targets.Remove(to)) return false;
+
+            if (targets.Count > 0)
+            {
+                link.to = targets.ToArray();
+                Dirty = true;
+                return true;
+            }
+
+            var links = new List<LevelLink>(Level.links);
+            links.Remove(link);
+            Level.links = links.ToArray();
+            Dirty = true;
+            return true;
+        }
+
+        /// <summary>
+        /// Where an id sits in the room, for drawing an arrow to it. Entities, zones and
+        /// triggers can all be link targets, so all three answer here.
+        /// </summary>
+        public bool TargetCentre(string id, out Vector2 centre)
+        {
+            centre = Vector2.zero;
+
+            LevelEntity entity = FindEntity(id);
+            if (entity?.pos != null && entity.pos.Length >= 2)
+            {
+                centre = new Vector2(entity.pos[0], entity.pos[1]);
+                return true;
+            }
+
+            LevelZone zone = FindZone(id);
+            if (zone != null)
+            {
+                centre = ZoneGeometry.RectOf(zone.rect).center;
+                return true;
+            }
+
+            LevelTrigger trigger = FindTrigger(id);
+            if (trigger != null)
+            {
+                centre = ZoneGeometry.RectOf(trigger.rect).center;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>Hit radius for clicking an arrow, in metres. About 6 px at 20 px/metre.</summary>
+        public const float LinkHitRadius = 0.3f;
+
+        /// <summary>
+        /// The link arrow under a world position, in file order. Distance to the segment
+        /// between the two centres — the arrow the controller draws is that segment, so the
+        /// click target and the drawing cannot drift apart.
+        /// </summary>
+        public bool LinkAt(Vector2 world, out string from, out string to)
+        {
+            from = null;
+            to = null;
+
+            if (Level.links == null) return false;
+
+            foreach (LevelLink link in Level.links)
+            {
+                if (link?.to == null) continue;
+                if (!TargetCentre(link.from, out Vector2 source)) continue;
+
+                foreach (string target in link.to)
+                {
+                    if (!TargetCentre(target, out Vector2 centre)) continue;
+                    if (DistanceToSegment(world, source, centre) > LinkHitRadius) continue;
+
+                    from = link.from;
+                    to = target;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Strips a deleted id from every link's target list, dropping any link left with no
+        /// targets. Entities, zones and triggers can all be link targets (TargetCentre
+        /// resolves all three), so every delete path needs this or the delete leaves a
+        /// dangling id behind for LevelValidator to catch instead.
+        /// </summary>
+        void RemoveLinksReferencing(string id)
+        {
+            if (Level.links == null) return;
+
+            var links = new List<LevelLink>();
+            bool changed = false;
+
+            foreach (LevelLink link in Level.links)
+            {
+                if (link?.to == null || System.Array.IndexOf(link.to, id) < 0)
+                {
+                    links.Add(link);
+                    continue;
+                }
+
+                var targets = new List<string>(link.to);
+                targets.Remove(id);
+                changed = true;
+
+                if (targets.Count == 0) continue; // an empty link is not a link
+
+                link.to = targets.ToArray();
+                links.Add(link);
+            }
+
+            if (!changed) return;
+
+            Level.links = links.ToArray();
+            Dirty = true;
+        }
+
+        static float DistanceToSegment(Vector2 p, Vector2 a, Vector2 b)
+        {
+            Vector2 ab = b - a;
+            float lengthSq = ab.sqrMagnitude;
+            if (lengthSq <= 0f) return Vector2.Distance(p, a);
+
+            float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / lengthSq);
+            return Vector2.Distance(p, a + ab * t);
         }
 
         // -------------------------------------------------------------------- exit
@@ -512,6 +887,7 @@ namespace KeepyUppy.LevelEditing
             ExitSelected = true;
             SelectedEntityId = null;
             SelectedZoneId = null;
+            SelectedTriggerId = null;
         }
 
         public void MoveExit(Vector2 world)

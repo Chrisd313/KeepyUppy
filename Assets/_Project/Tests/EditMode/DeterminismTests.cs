@@ -71,6 +71,37 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void TrapRoom_SameSeed_BitIdenticalEveryStep()
+        {
+            // Triggers are the second system to carry real per-step state, after the lamp's
+            // exposure. Without this the guarantee rots silently (CLAUDE.md).
+            SimWorld a = SimTestHelpers.BuildTrapRoom(Seed);
+            SimWorld b = SimTestHelpers.BuildTrapRoom(Seed);
+
+            for (int i = 0; i < Steps; i++)
+            {
+                a.Tick();
+                b.Tick();
+
+                SimSnapshot.Capture(a).AssertMatches(SimSnapshot.Capture(b), $"trap step {i}");
+            }
+        }
+
+        [Test]
+        public void TrapRoom_ResetAndReplayed_BitIdentical()
+        {
+            SimWorld world = SimTestHelpers.BuildTrapRoom(Seed);
+
+            world.Tick(Steps);
+            SimSnapshot first = SimSnapshot.Capture(world);
+
+            world.Restart();
+            world.Tick(Steps);
+
+            first.AssertMatches(SimSnapshot.Capture(world), "trap room after replay");
+        }
+
+        [Test]
         public void DifferentSeed_ProducesDifferentPath()
         {
             // Guards the opposite failure: a seed that is plumbed but ignored would make

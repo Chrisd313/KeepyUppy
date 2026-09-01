@@ -10,6 +10,28 @@ namespace KeepyUppy.SimTests
     /// </summary>
     public sealed class StepInterpolatorTests
     {
+        /// <summary>
+        /// A view must be able to tell a seeded interpolator from a fresh one.
+        ///
+        /// Sample() on a fresh interpolator returns the origin, and a view that draws it
+        /// puts the body in the bottom-left corner of the room for one render frame — every
+        /// LateUpdate that lands before the first FixedUpdate, which is every level load and
+        /// every rebuild of an entity's views.
+        /// </summary>
+        [Test]
+        public void Started_IsFalseUntilTheFirstSync()
+        {
+            var interp = new StepInterpolator();
+
+            Assert.IsFalse(interp.Started, "nothing has been recorded yet");
+            Assert.AreEqual(Vector2.zero, interp.Sample(0.5f), "which is why a view must not draw this");
+
+            interp.Sync(0, new Vector2(16f, 12f));
+
+            Assert.IsTrue(interp.Started);
+            Assert.AreEqual(new Vector2(16f, 12f), interp.Sample(0.5f));
+        }
+
         [Test]
         public void FirstSync_SnapsRatherThanTweeningFromTheOrigin()
         {

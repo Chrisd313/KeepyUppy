@@ -42,7 +42,9 @@ namespace KeepyUppy.Runtime
                 // Do not pixel-snap: these are moving entities the player is tracking
                 // (CLAUDE.md rendering note). Interpolated between fixed steps for the same
                 // reason — a saw crossing the room is tracked as closely as the balloon.
-                Vector2 centre = Driver != null && i < _interps.Count
+                // Started, not just present: a rebuilt view is sampled by this LateUpdate
+                // before FixedUpdate has seeded it, and an unseeded tween reads as the origin.
+                Vector2 centre = Driver != null && i < _interps.Count && _interps[i].Started
                     ? _interps[i].Sample(alpha)
                     : Centre(entity);
 
@@ -84,16 +86,20 @@ namespace KeepyUppy.Runtime
         }
 
         /// <summary>
-        /// A saw is drawn on its position; a lamp beam and a fan's blast both extend *away*
-        /// from theirs, so the quad centres on the middle of the volume, not its origin.
+        /// A saw is drawn on its position; a lamp beam, a fan's blast and a spike bar's shaft
+        /// all extend *away* from theirs, so the quad centres on the middle of the volume.
         /// </summary>
         static Vector2 Centre(SimEntity entity)
         {
             switch (entity.Kind)
             {
-                case EntityKind.Lamp: return (entity.Position + entity.KillEnd) * 0.5f;
-                case EntityKind.Fan:  return entity.FanRect().center;
-                default:              return entity.Position;
+                // A lamp beam and a spike bar's shaft both run from the entity's position to
+                // KillEnd, so the quad centres on the middle of the volume, not its base.
+                case EntityKind.Lamp:
+                case EntityKind.SpikeBar: return (entity.Position + entity.KillEnd) * 0.5f;
+
+                case EntityKind.Fan:      return entity.FanRect().center;
+                default:                  return entity.Position;
             }
         }
 
@@ -103,6 +109,7 @@ namespace KeepyUppy.Runtime
             {
                 case EntityKind.Lamp:
                 case EntityKind.Fan:
+                case EntityKind.SpikeBar:
                 {
                     Vector2 dir = entity.Direction();
                     return Mathf.Abs(dir.x) >= Mathf.Abs(dir.y)
@@ -120,7 +127,8 @@ namespace KeepyUppy.Runtime
             switch (kind)
             {
                 // Reserved hazard colour (GDD 13.1) for the things that kill on contact.
-                case EntityKind.Saw:  return SimPalette.Hazard;
+                case EntityKind.Saw:
+                case EntityKind.SpikeBar: return SimPalette.Hazard;
 
                 // A lamp kills over time, so it reads as a translucent field rather than a
                 // solid object. Still the hazard hue: the reserved colour means "this hurts".

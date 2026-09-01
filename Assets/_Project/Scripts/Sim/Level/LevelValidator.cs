@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using KeepyUppy.Sim.Triggers;
 using UnityEngine;
 
 namespace KeepyUppy.Sim.Level
@@ -25,6 +26,7 @@ namespace KeepyUppy.Sim.Level
             ValidateExit(level, warnings);
             ValidateIds(level, warnings);
             ValidateEntities(level, warnings);
+            ValidateTriggers(level, warnings);
             ValidateMeta(level, warnings);
 
             return warnings;
@@ -219,6 +221,87 @@ namespace KeepyUppy.Sim.Level
                     warnings.Add($"entity '{entity.id}' path is not a flat list of x,y pairs");
                 else if (entity.path.Length < 4)
                     warnings.Add($"entity '{entity.id}' has a path with fewer than 2 waypoints");
+            }
+        }
+
+        /// <summary>
+        /// Triggers and links (GDD 9.3). Duplicate ids and links naming a missing id are
+        /// already covered by ValidateIds — this is everything else.
+        /// </summary>
+        static void ValidateTriggers(LevelData level, List<string> warnings)
+        {
+            if (level.triggers != null)
+            {
+                foreach (LevelTrigger trigger in level.triggers)
+                {
+                    if (trigger == null) continue;
+
+                    TriggerKind kind = TriggerFactory.ParseKind(trigger.type);
+
+                    if (kind == TriggerKind.Unknown)
+                        warnings.Add($"trigger '{trigger.id}' type '{trigger.type}' is parsed but not simulated");
+
+                    if (kind == TriggerKind.Timer && trigger.seconds <= 0f)
+                        warnings.Add($"timer trigger '{trigger.id}' has no seconds — it can never fire");
+
+                    bool region = kind == TriggerKind.PlayerRegion || kind == TriggerKind.BalloonRegion;
+                    float[] r = trigger.rect;
+
+                    if (region && (r == null || r.Length < 4 || r[2] <= 0f || r[3] <= 0f))
+                        warnings.Add($"trigger '{trigger.id}' has a zero-area rect");
+
+                    if (!LinkedFrom(level, trigger.id))
+                        warnings.Add($"nothing links from trigger '{trigger.id}'");
+                }
+
+                ReportDuplicateRects(level, warnings);
+            }
+
+            if (level.links == null) return;
+
+            foreach (LevelLink link in level.links)
+            {
+                if (link == null) continue;
+
+                if (TriggerFactory.ParseAction(link.action) == LinkAction.Inert)
+                    warnings.Add($"link action '{link.action}' is parsed but not simulated");
+            }
+        }
+
+        static bool LinkedFrom(LevelData level, string id)
+        {
+            if (level.links == null || string.IsNullOrEmpty(id)) return false;
+
+            foreach (LevelLink link in level.links)
+                if (link != null && link.from == id) return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Two once:true triggers on the same rect: almost always a duplication mistake
+        /// (level-editor-spec 7). Compared pairwise — a room has a handful of triggers, and a
+        /// dictionary keyed on a float rect would be worse in every way.
+        /// </summary>
+        static void ReportDuplicateRects(LevelData level, List<string> warnings)
+        {
+            LevelTrigger[] triggers = level.triggers;
+
+            for (int i = 0; i < triggers.Length; i++)
+            for (int j = i + 1; j < triggers.Length; j++)
+            {
+                LevelTrigger a = triggers[i];
+                LevelTrigger b = triggers[j];
+
+                if (a == null || b == null || !a.once || !b.once) continue;
+                if (a.rect == null || b.rect == null || a.rect.Length < 4 || b.rect.Length < 4) continue;
+
+                bool same = true;
+                for (int k = 0; k < 4; k++)
+                    if (!Mathf.Approximately(a.rect[k], b.rect[k])) { same = false; break; }
+
+                if (same)
+                    warnings.Add($"triggers '{a.id}' and '{b.id}' have identical rects");
             }
         }
 

@@ -48,6 +48,12 @@ namespace KeepyUppy.Sim.Level
             EntityParamId.Power, EntityParamId.Speed,
         };
 
+        static readonly EntityParamId[] SpikeBar =
+        {
+            EntityParamId.Radius, EntityParamId.Length, EntityParamId.Angle,
+            EntityParamId.Speed,
+        };
+
         /// <summary>The params worth showing for a type. Unknown types show nothing.</summary>
         public static EntityParamId[] For(string type)
         {
@@ -56,6 +62,7 @@ namespace KeepyUppy.Sim.Level
                 case EntityKind.Saw:  return Saw;
                 case EntityKind.Lamp: return Lamp;
                 case EntityKind.Fan:  return Fan;
+                case EntityKind.SpikeBar: return SpikeBar;
                 default:              return None;
             }
         }
@@ -85,6 +92,12 @@ namespace KeepyUppy.Sim.Level
                     if (id == EntityParamId.Length) return EntityDefaults.FanLength;
                     if (id == EntityParamId.Angle) return EntityDefaults.FanAngle;
                     if (id == EntityParamId.Power) return EntityDefaults.FanPower;
+                    return 0f;
+
+                case EntityKind.SpikeBar:
+                    if (id == EntityParamId.Radius) return EntityDefaults.SpikeBarRadius;
+                    if (id == EntityParamId.Length) return EntityDefaults.SpikeBarLength;
+                    if (id == EntityParamId.Angle) return EntityDefaults.SpikeBarAngle;
                     return 0f;
 
                 default:

@@ -48,8 +48,17 @@ namespace KeepyUppy.Sim.Entities
         /// GDD 9.3 start_state. A dormant entity does not move, kill or blow — it is waiting
         /// to be armed by a trigger. Triggers do not exist yet, so nothing arms it; the flag
         /// is honoured now so a level authored with one behaves rather than misbehaves.
+        ///
+        /// Flip it through <see cref="SetActive"/> rather than directly whenever the step is
+        /// known: that is what records <see cref="ArmedStep"/>.
         /// </summary>
         public bool Active = true;
+
+        /// <summary>
+        /// What Active returns to on a restart. A link can flip Active mid-run (GDD 9.3), and
+        /// without this the room the player retries would not be the room they died in.
+        /// </summary>
+        public bool StartActive = true;
 
         // --- Run state: everything here must be reset by Reset() and covered by the
         //     replay-equality test (CLAUDE.md). Position is derived, not accumulated. ---
@@ -59,11 +68,25 @@ namespace KeepyUppy.Sim.Entities
         /// <summary>Consecutive frames the balloon has been inside a lamp beam.</summary>
         public int ExposureFrames;
 
+        /// <summary>
+        /// The step this entity was armed on. A path is measured from here, not from zero.
+        ///
+        /// EntityPath is a pure function of the step counter, so a saw armed ten seconds into
+        /// a room would otherwise be placed where it would have been had it run the whole
+        /// time — the better part of a lap in a single step, which reads as the saw
+        /// teleporting to the far end of its route and then resuming (GDD 9.3).
+        ///
+        /// Zero for anything that starts active, so a level with no triggers is unchanged.
+        /// </summary>
+        public int ArmedStep;
+
         /// <summary>Where the kill capsule ends. Equals Position for anything but a lamp.</summary>
         public Vector2 KillEnd;
 
         public void Reset()
         {
+            Active = StartActive;
+            ArmedStep = 0;
             ExposureFrames = 0;
             Position = Points != null && Points.Length > 0 ? Points[0] : Vector2.zero;
             KillEnd = Position;
@@ -75,13 +98,31 @@ namespace KeepyUppy.Sim.Entities
         /// </summary>
         public void Place(int step)
         {
+            // Steps since arming, never the raw world step: see ArmedStep. Clamped at zero so
+            // asking for a step before the entity was armed parks it at its start rather than
+            // running the path backwards - the phase-5 rewind will ask for exactly that.
+            int elapsed = step - ArmedStep;
+            if (elapsed < 0) elapsed = 0;
+
             Position = Active
-                ? EntityPath.Evaluate(Points, Mode, Speed, Phase, step)
+                ? EntityPath.Evaluate(Points, Mode, Speed, Phase, elapsed)
                 : Points[0];
 
-            KillEnd = Kind == EntityKind.Lamp
+            // A lamp's beam and a spike bar's shaft are both capsules with length; everything
+            // else is a point. One shape keeps the GDD 8 shrink at a single call site.
+            KillEnd = Kind == EntityKind.Lamp || Kind == EntityKind.SpikeBar
                 ? Position + Direction() * Length
                 : Position;
+        }
+
+        /// <summary>
+        /// Arms or disarms the entity, recording when. Only a false-to-true edge moves
+        /// <see cref="ArmedStep"/>, so a link that fires On twice does not restart the path.
+        /// </summary>
+        public void SetActive(bool active, int step)
+        {
+            if (active && !Active) ArmedStep = step;
+            Active = active;
         }
 
         public Vector2 Direction()
@@ -91,10 +132,10 @@ namespace KeepyUppy.Sim.Entities
         }
 
         /// <summary>Instantly lethal on contact. A lamp is not — it needs time (GDD 9.2).</summary>
-        public bool KillsOnContact => Kind == EntityKind.Saw;
+        public bool KillsOnContact => Kind == EntityKind.Saw || Kind == EntityKind.SpikeBar;
 
-        /// <summary>GDD 4.1: the balloon dies to almost anything; the player only to blades.</summary>
-        public bool KillsPlayer => Kind == EntityKind.Saw;
+        /// <summary>GDD 4.1: the balloon dies to almost anything; the player only to blades and spikes.</summary>
+        public bool KillsPlayer => Kind == EntityKind.Saw || Kind == EntityKind.SpikeBar;
 
         /// <summary>
         /// The capsule against a circle, inset by the GDD 8 fairness shrink.

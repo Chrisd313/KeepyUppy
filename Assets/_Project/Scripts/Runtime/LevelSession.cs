@@ -59,6 +59,7 @@ namespace KeepyUppy.Runtime
 
             session.BuildTileViews(world.Grid);
             session.BuildZoneViews(world);
+            session.BuildTriggerViews(world);
             session.BuildEntityViews(world, driver);
             session.BuildExitView(world);
             session.BuildBalloonView(world.Balloon, driver);
@@ -118,6 +119,18 @@ namespace KeepyUppy.Runtime
             root.transform.SetParent(transform, false);
 
             root.AddComponent<ZoneViewSync>().World = world;
+        }
+
+        /// <summary>
+        /// Only the triggers authored visible:true are drawn here; the rest stay invisible
+        /// in play, which is the point of the betrayal trap (GDD 9.3).
+        /// </summary>
+        void BuildTriggerViews(SimWorld world)
+        {
+            var root = new GameObject("Triggers");
+            root.transform.SetParent(transform, false);
+
+            root.AddComponent<TriggerViewSync>().World = world;
         }
 
         /// <summary>Hazard quads follow the entities, which move every step (GDD 9).</summary>

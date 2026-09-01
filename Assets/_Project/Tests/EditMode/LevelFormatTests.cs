@@ -94,7 +94,7 @@ namespace KeepyUppy.SimTests
                 },
                 triggers = new[]
                 {
-                    new LevelTrigger { id = "trigger_a", type = "player_region", rect = new[] { 14f, 10f, 4f, 8f }, once = true },
+                    new LevelTrigger { id = "trigger_a", type = "player_region", rect = new[] { 14f, 10f, 4f, 8f }, once = true, visible = true, seconds = 0f },
                 },
                 links = new[]
                 {
@@ -137,6 +137,46 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual("trigger_a", read.links[0].from);
             CollectionAssert.AreEqual(new[] { "z01", "e01" }, read.links[0].to);
             Assert.AreEqual("off", read.zones[0].start_state);
+        }
+
+        [Test]
+        public void Trigger_VisibleAndSeconds_SurviveARoundTrip()
+        {
+            LevelData level = FullLevel();
+            level.triggers = new[]
+            {
+                new LevelTrigger
+                {
+                    id = "t01", type = "player_region",
+                    rect = new[] { 14f, 10f, 4f, 8f },
+                    once = true, visible = true, seconds = 0f,
+                },
+                new LevelTrigger
+                {
+                    id = "t02", type = "timer",
+                    rect = new[] { 0f, 0f, 1f, 1f },
+                    once = true, visible = false, seconds = 2.5f,
+                },
+            };
+
+            _source.Save(level.id, level);
+            Assert.IsTrue(_source.TryLoad(level.id, out LevelData loaded));
+
+            Assert.IsTrue(loaded.triggers[0].visible, "visible must round-trip");
+            Assert.IsFalse(loaded.triggers[1].visible);
+            Assert.AreEqual(2.5f, loaded.triggers[1].seconds, 0.0001f);
+        }
+
+        [Test]
+        public void Trigger_WithNeitherNewField_LoadsWithDocumentedDefaults()
+        {
+            // A file written before these fields existed: JsonUtility leaves absent fields at
+            // their C# default, and the default must be the old meaning — invisible, no timer.
+            var trigger = JsonUtility.FromJson<LevelTrigger>(
+                "{\"id\":\"t01\",\"type\":\"player_region\",\"rect\":[1,1,2,2],\"once\":true}");
+
+            Assert.IsFalse(trigger.visible);
+            Assert.AreEqual(0f, trigger.seconds);
         }
 
         [Test]

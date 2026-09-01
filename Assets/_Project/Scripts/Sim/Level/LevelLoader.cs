@@ -1,5 +1,6 @@
 using KeepyUppy.InputLayer;
 using KeepyUppy.Sim.Entities;
+using KeepyUppy.Sim.Triggers;
 using UnityEngine;
 
 namespace KeepyUppy.Sim.Level
@@ -54,6 +55,7 @@ namespace KeepyUppy.Sim.Level
             LoadZones(level, world.Air);
             LoadEntities(level, world.Entities, world.Air);
             world.Entities.Step(world.Clock.Step, world.Air);
+            LoadTriggers(level, world.Triggers);
         }
 
         /// <summary>
@@ -97,6 +99,29 @@ namespace KeepyUppy.Sim.Level
                 SimEntity entity = EntityFactory.Create(data);
                 if (entity != null) entities.Add(entity, air);
             }
+        }
+
+        /// <summary>
+        /// Triggers and the links that fan out from them (GDD 9.3).
+        ///
+        /// Triggers first, in file order, so a link can resolve its source to an index rather
+        /// than carrying an id into the tick. File order fixes the firing order, so a
+        /// re-ordered file is a different — but still deterministic — level, exactly as it is
+        /// for entities.
+        /// </summary>
+        static void LoadTriggers(LevelData level, TriggerField triggers)
+        {
+            triggers.Clear();
+            if (level.triggers != null)
+            {
+                foreach (LevelTrigger data in level.triggers)
+                    triggers.Add(TriggerFactory.Create(data));
+            }
+
+            if (level.links == null) return;
+
+            foreach (LevelLink data in level.links)
+                triggers.AddLink(TriggerFactory.CreateLink(data, triggers));
         }
 
         /// <summary>The way out (GDD 7.4). A level without one is a sandbox, not an error.</summary>
