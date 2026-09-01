@@ -105,7 +105,7 @@ namespace KeepyUppy.Runtime
         /// <summary>One debris quad for a tile a panel just hid.</summary>
         void Spawn(int x, int y, TileKind kind)
         {
-            Color colour = kind == TileKind.Solid ? SimPalette.Solid : SimPalette.Hazard;
+            Color colour = SimPalette.ForTile(kind);
 
             _debris.Add(new Debris
             {

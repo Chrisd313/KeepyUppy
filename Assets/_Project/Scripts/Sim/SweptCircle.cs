@@ -57,8 +57,10 @@ namespace KeepyUppy.Sim
                 result.lastTileY = tileY;
 
                 // A floor is a surface pushing upward. Walls and ceilings bounce; the floor
-                // is where a balloon's run ends (GDD 4.1).
-                if (normal.y >= FloorNormalThreshold) result.hitFloor = true;
+                // is where a balloon's run ends (GDD 4.1) - unless it is rubber, which is
+                // the one upward-facing surface a balloon is allowed to land on.
+                if (normal.y >= FloorNormalThreshold && kind != TileKind.Rubber)
+                    result.hitFloor = true;
                 pos = new Vector2(
                     pos.x + delta.x * tHit + normal.x * Skin,
                     pos.y + delta.y * tHit + normal.y * Skin);
@@ -67,11 +69,29 @@ namespace KeepyUppy.Sim
                 if (vn < 0f)
                 {
                     float approach = -vn;
-                    // GDD 6.4 min_bounce_speed: below this there is no bounce at all,
-                    // otherwise a resting balloon jitters forever on ever-smaller hops.
-                    float outward = approach < tuning.minBounceSpeed
-                        ? 0f
-                        : approach * tuning.restitutionWall;
+
+                    // Rubber SETS the outgoing speed, for the same reason ApplyHit does
+                    // (GDD 5.1): a bounce that scaled with what came in would shrink, and
+                    // min_bounce_speed would eventually zero one - parking the balloon on a
+                    // tile that by design cannot kill it. min_bounce_speed is skipped here
+                    // for that reason, not by oversight.
+                    //
+                    // Only the normal component is replaced; the tangential term below is
+                    // untouched, so a balloon crossing a rubber floor keeps its travel and a
+                    // rubber wall throws it straight back.
+                    float outward;
+                    if (kind == TileKind.Rubber)
+                    {
+                        outward = tuning.rubberLaunchSpeed;
+                    }
+                    else
+                    {
+                        // GDD 6.4 min_bounce_speed: below this there is no bounce at all,
+                        // otherwise a resting balloon jitters forever on ever-smaller hops.
+                        outward = approach < tuning.minBounceSpeed
+                            ? 0f
+                            : approach * tuning.restitutionWall;
+                    }
 
                     vel = new Vector2(
                         vel.x - normal.x * vn + normal.x * outward,

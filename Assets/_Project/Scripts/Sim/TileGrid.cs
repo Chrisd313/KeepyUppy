@@ -18,6 +18,7 @@ namespace KeepyUppy.Sim
         SpikeLeft = 6,    // '<'
         SpikeRight = 7,   // '>'
         PlayerLethal = 8, // 'x'
+        Rubber = 9,       // 'o'
     }
 
     /// <summary>
@@ -97,8 +98,14 @@ namespace KeepyUppy.Sim
 
         public bool IsBlockingPlayer(int x, int y) => BlocksPlayer(this[x, y]);
 
-        /// <summary>Only genuine geometry stops the balloon. Everything lethal lets it in.</summary>
-        public static bool BlocksBalloon(TileKind kind) => kind == TileKind.Solid;
+        /// <summary>
+        /// Only genuine geometry stops the balloon. Everything lethal lets it in.
+        ///
+        /// Rubber is geometry, not a hazard: it has to stop the balloon in order to throw it
+        /// back, which is the whole tile.
+        /// </summary>
+        public static bool BlocksBalloon(TileKind kind)
+            => kind == TileKind.Solid || kind == TileKind.Rubber;
 
         /// <summary>
         /// Everything except empty space and one-ways stops the player, including spikes —
@@ -197,6 +204,7 @@ namespace KeepyUppy.Sim
                 case '<': return TileKind.SpikeLeft;
                 case '>': return TileKind.SpikeRight;
                 case 'x': return TileKind.PlayerLethal;
+                case 'o': return TileKind.Rubber;
                 default:  return TileKind.Empty;
             }
         }
@@ -213,6 +221,7 @@ namespace KeepyUppy.Sim
                 case TileKind.SpikeLeft:    return '<';
                 case TileKind.SpikeRight:   return '>';
                 case TileKind.PlayerLethal: return 'x';
+                case TileKind.Rubber:       return 'o';
                 default:                    return '.';
             }
         }

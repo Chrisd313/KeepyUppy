@@ -192,6 +192,10 @@ namespace KeepyUppy.SimTests
             world.Grid.Clear();
             world.Grid.FillBorder();
             world.Grid.Fill(4, 6, 10, 1, TileKind.Solid);
+            // A rubber stripe in the ledge the balloon opens onto. Its fixed launch is a
+            // second velocity source in the replay comparison, which is what CLAUDE.md asks
+            // of any tile that can rewrite the balloon's motion.
+            world.Grid.Fill(8, 6, 3, 1, TileKind.Rubber);
             world.Grid.Fill(18, 11, 10, 1, TileKind.Solid);
             world.Grid.Fill(24, 1, 3, 1, TileKind.SpikeUp);
 

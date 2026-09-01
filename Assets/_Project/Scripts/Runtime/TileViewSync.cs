@@ -40,7 +40,7 @@ namespace KeepyUppy.Runtime
                 TileKind kind = Grid[x, y];
                 if (kind == TileKind.Empty) continue;
 
-                Color colour = kind == TileKind.Solid ? SimPalette.Solid : SimPalette.Hazard;
+                Color colour = SimPalette.ForTile(kind);
 
                 // Static geometry snaps to the tile grid (level-editor-spec 3); the tile
                 // centre sits at (x + 0.5, y + 0.5).

@@ -96,6 +96,7 @@ One JSON file per level, human-readable, one file per level, committed to git. T
   // Static geometry. Run-length encoded rows, one string per row.
   // Chars: '.' empty  '#' solid  '=' oneway  '~' rough(pops)  '^' spike-up
   //        'v' spike-down  '<' '>' spike-side  'x' player-lethal only
+  //        'o' rubber — bounces the balloon at a fixed speed, never ends the run
   "tiles": [
     "................................",
     "###...........................##"

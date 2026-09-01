@@ -1419,7 +1419,7 @@ namespace KeepyUppy.LevelEditing
         {
             TileKind.Empty, TileKind.Solid, TileKind.OneWay, TileKind.Rough,
             TileKind.SpikeUp, TileKind.SpikeDown, TileKind.SpikeLeft, TileKind.SpikeRight,
-            TileKind.PlayerLethal,
+            TileKind.PlayerLethal, TileKind.Rubber,
         };
 
         /// <summary>
