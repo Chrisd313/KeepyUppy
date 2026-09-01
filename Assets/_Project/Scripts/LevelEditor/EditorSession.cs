@@ -55,6 +55,13 @@ namespace KeepyUppy.LevelEditing
         public string SelectedTriggerId;
 
         /// <summary>
+        /// The selected panel. Mutually exclusive with the entity, zone, trigger and exit
+        /// selections: Delete tests each independently, so two live selections means one
+        /// keypress destroying two objects.
+        /// </summary>
+        public string SelectedPanelId;
+
+        /// <summary>
         /// The exit is selected instead of an entity. Kept as a separate flag rather than a
         /// magic entity id: the gate is not an entity, and pretending otherwise would leak
         /// into the entity list, the id allocator and every foreach over it.
@@ -183,6 +190,7 @@ namespace KeepyUppy.LevelEditing
             Undo.Clear();
             SelectedEntityId = null;
             SelectedTriggerId = null;
+            SelectedPanelId = null;
             ExitSelected = false;
             Dirty = false;
         }
@@ -234,6 +242,7 @@ namespace KeepyUppy.LevelEditing
             // pushes an undo entry for a deletion that cannot happen.
             if (FindZone(SelectedZoneId) == null) SelectedZoneId = null;
             if (FindTrigger(SelectedTriggerId) == null) SelectedTriggerId = null;
+            if (FindPanel(SelectedPanelId) == null) SelectedPanelId = null;
         }
 
         // ------------------------------------------------------------------ tiles
@@ -411,6 +420,7 @@ namespace KeepyUppy.LevelEditing
             SelectedZoneId = id;
             SelectedEntityId = null;
             SelectedTriggerId = null;
+            SelectedPanelId = null;
             ExitSelected = false;
         }
 
@@ -426,6 +436,7 @@ namespace KeepyUppy.LevelEditing
             SelectedEntityId = id;
             SelectedZoneId = null;
             SelectedTriggerId = null;
+            SelectedPanelId = null;
             ExitSelected = false;
         }
 
@@ -581,6 +592,7 @@ namespace KeepyUppy.LevelEditing
             SelectedTriggerId = id;
             SelectedEntityId = null;
             SelectedZoneId = null;
+            SelectedPanelId = null;
             ExitSelected = false;
         }
 
@@ -666,6 +678,125 @@ namespace KeepyUppy.LevelEditing
             }
 
             return "t" + (Level.triggers?.Length ?? 0);
+        }
+
+        // ------------------------------------------------------------------ panels
+
+        public LevelPanel FindPanel(string id)
+        {
+            if (string.IsNullOrEmpty(id) || Level.panels == null) return null;
+
+            foreach (LevelPanel panel in Level.panels)
+                if (panel != null && panel.id == id) return panel;
+
+            return null;
+        }
+
+        /// <summary>Smallest first, as ZoneAt and TriggerAt are — panels nest by design.</summary>
+        public LevelPanel PanelAt(Vector2 world)
+        {
+            if (Level.panels == null) return null;
+
+            LevelPanel best = null;
+            float bestArea = float.MaxValue;
+
+            foreach (LevelPanel panel in Level.panels)
+            {
+                if (panel?.rect == null || panel.rect.Length < 4) continue;
+
+                Rect rect = ZoneGeometry.RectOf(panel.rect);
+                if (!rect.Contains(world)) continue;
+
+                float area = rect.width * rect.height;
+                if (area >= bestArea) continue;
+
+                bestArea = area;
+                best = panel;
+            }
+
+            return best;
+        }
+
+        public LevelPanel AddPanel(Rect rect)
+        {
+            var panel = new LevelPanel
+            {
+                id = NextPanelId(),
+                rect = ZoneGeometry.ToArray(ZoneGeometry.Snap(rect)),
+                start_state = "on",
+            };
+
+            var panels = new List<LevelPanel>(Level.panels ?? new LevelPanel[0]) { panel };
+            Level.panels = panels.ToArray();
+
+            SelectPanel(panel.id);
+            Dirty = true;
+            return panel;
+        }
+
+        /// <summary>
+        /// Selects a panel, clearing the entity, zone, trigger and exit selections.
+        ///
+        /// The five are mutually exclusive because more than the inspector reads them: the
+        /// Delete key tests each independently, so two live selections means one keypress
+        /// destroying two objects.
+        /// </summary>
+        public void SelectPanel(string id)
+        {
+            SelectedPanelId = id;
+            SelectedEntityId = null;
+            SelectedZoneId = null;
+            SelectedTriggerId = null;
+            ExitSelected = false;
+        }
+
+        public void SetPanelRect(string id, Rect rect)
+        {
+            LevelPanel panel = FindPanel(id);
+            if (panel == null) return;
+
+            panel.rect = ZoneGeometry.ToArray(ZoneGeometry.Snap(rect));
+            Dirty = true;
+        }
+
+        public void SetPanelEnabled(string id, bool enabled)
+        {
+            LevelPanel panel = FindPanel(id);
+            if (panel == null) return;
+
+            string state = enabled ? "on" : "off";
+            if (panel.start_state == state) return;
+
+            panel.start_state = state;
+            Dirty = true;
+        }
+
+        public bool DeletePanel(string id)
+        {
+            LevelPanel panel = FindPanel(id);
+            if (panel == null) return false;
+
+            var panels = new List<LevelPanel>(Level.panels);
+            panels.Remove(panel);
+            Level.panels = panels.ToArray();
+
+            RemoveLinksReferencing(id);
+
+            if (SelectedPanelId == id) SelectedPanelId = null;
+            Dirty = true;
+            return true;
+        }
+
+        /// <summary>Lowest unused pNN id, matching how entity, zone and trigger ids are allocated.</summary>
+        string NextPanelId()
+        {
+            for (int i = 1; i < 1000; i++)
+            {
+                string candidate = "p" + i.ToString("00");
+                if (FindPanel(candidate) == null) return candidate;
+            }
+
+            return "p" + (Level.panels?.Length ?? 0);
         }
 
         // -------------------------------------------------------------------- links
@@ -781,6 +912,13 @@ namespace KeepyUppy.LevelEditing
                 return true;
             }
 
+            LevelPanel panel = FindPanel(id);
+            if (panel != null)
+            {
+                centre = ZoneGeometry.RectOf(panel.rect).center;
+                return true;
+            }
+
             return false;
         }
 
@@ -888,6 +1026,7 @@ namespace KeepyUppy.LevelEditing
             SelectedEntityId = null;
             SelectedZoneId = null;
             SelectedTriggerId = null;
+            SelectedPanelId = null;
         }
 
         public void MoveExit(Vector2 world)
