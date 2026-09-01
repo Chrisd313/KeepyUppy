@@ -20,9 +20,6 @@ namespace KeepyUppy.Runtime
     {
         public SimWorld World;
 
-        /// <summary>Used only to notice a restart, never to drive the fall.</summary>
-        public SimDriver Driver;
-
         struct Debris
         {
             public GameObject view;
@@ -65,14 +62,23 @@ namespace KeepyUppy.Runtime
 
         void WatchPanels()
         {
-            while (_wasEnabled.Count < World.Panels.Count) _wasEnabled.Add(true);
+            // Rebuild rather than only grow: LoadPanels (the editor's live resync) clears and
+            // re-Adds every panel, so a count change can also mean an index shifted under an
+            // existing entry. A fresh count is the one cheap, always-correct signal for that;
+            // seeding from the live flags — not a literal true — is what stops a panel authored
+            // start_state:"off" from firing a false edge on the very first frame it's seen.
+            if (_wasEnabled.Count != World.Panels.Count)
+            {
+                _wasEnabled.Clear();
+                for (int i = 0; i < World.Panels.Count; i++) _wasEnabled.Add(World.Panels[i].Enabled);
+            }
 
             for (int i = 0; i < World.Panels.Count; i++)
             {
                 bool enabled = World.Panels[i].Enabled;
 
                 // The true-to-false edge is the moment the floor gives way.
-                if (_wasEnabled[i] && !enabled) Spawn(World.Panels[i].Rect);
+                if (_wasEnabled[i] && !enabled) Spawn(i);
 
                 _wasEnabled[i] = enabled;
             }
@@ -83,13 +89,20 @@ namespace KeepyUppy.Runtime
         /// live grid: the mask is already applied by the time this runs, so the live grid
         /// reports Empty for exactly the tiles we want to draw falling.
         /// </summary>
-        void Spawn(RectInt rect)
+        void Spawn(int panelIndex)
         {
+            RectInt rect = World.Panels[panelIndex].Rect;
+
             for (int y = rect.yMin; y < rect.yMax; y++)
             for (int x = rect.xMin; x < rect.xMax; x++)
             {
                 if (!TileGrid.InBounds(x, y)) continue;
                 if (!World.Grid.IsMasked(x, y)) continue;
+
+                // IsMasked is true if ANY covering panel is off, so with two overlapping panels
+                // a cell already hidden by another disabled panel is not leaving anything when
+                // this one switches off too — skip it, or it falls a second time.
+                if (HiddenByAnotherPanel(x, y, panelIndex)) continue;
 
                 TileKind kind = World.Grid.BaseAt(x, y);
                 if (kind == TileKind.Empty) continue;
@@ -103,6 +116,18 @@ namespace KeepyUppy.Runtime
                     velocity = 0f,
                 });
             }
+        }
+
+        bool HiddenByAnotherPanel(int x, int y, int panelIndex)
+        {
+            for (int i = 0; i < World.Panels.Count; i++)
+            {
+                if (i == panelIndex) continue;
+                if (World.Panels[i].Enabled) continue;
+                if (World.Panels[i].Rect.Contains(new Vector2Int(x, y))) return true;
+            }
+
+            return false;
         }
 
         void FallAndFade()

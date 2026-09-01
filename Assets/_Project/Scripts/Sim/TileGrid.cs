@@ -130,9 +130,13 @@ namespace KeepyUppy.Sim
         /// <summary>
         /// The tile a cell holds regardless of any mask. For the debris view, which draws the
         /// tiles a panel has just hidden — the indexer reports those as Empty by design.
+        /// Out-of-range mirrors the indexer exactly: Empty below the room, Solid elsewhere.
         /// </summary>
         public TileKind BaseAt(int x, int y)
-            => InBounds(x, y) ? _cells[y * Width + x] : TileKind.Solid;
+        {
+            if (InBounds(x, y)) return _cells[y * Width + x];
+            return y < 0 ? TileKind.Empty : TileKind.Solid;
+        }
 
         /// <summary>
         /// Hides or reveals a rectangle of cells. Version moves only when something actually
