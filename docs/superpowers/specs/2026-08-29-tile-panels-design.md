@@ -203,13 +203,25 @@ The player already dies 2 m outside the room in any direction — `SimWorld.Step
 `Kill(DeathCause.PlayerFellOut)`, described in the code as a safety net "should be impossible in
 a walled level". Panels make it reachable on purpose, and it needs no change.
 
-**The balloon has no equivalent check, and that is a soft-lock.** Its death conditions are a
-hazard or `result.hitFloor`; with the floor masked away there is no floor to hit, so it falls
-forever and the level never ends. `StepBalloon` gains the same bounds test with the same 2 m
-margin, killing with a new `DeathCause.BalloonLeftRoom = 6`.
+**The balloon has no equivalent check, and that is a soft-lock — but the original diagnosis of
+it was wrong.** This section originally reasoned that with the floor masked away there is no
+floor to hit, so an unfloored balloon falls forever and the level never ends. That is not what
+happens: a ruling taken during implementation opened `TileGrid`'s out-of-bounds read on the
+floor side only (`this[x, y]` returns `Empty` below `y = 0`, still `Solid` on the other three
+sides), specifically so a level with no floor tile produces a Mario-style falling death instead
+of landing on an implicit floor no one placed. A balloon with no floor beneath it now falls
+through the bottom of the room and is caught by the border wall's usual `BalloonHitFloor` — the
+game still ends, just later than it would with a real floor tile.
 
-Escaping upward counts too, and reads correctly: a balloon that gets away is the premise of the
-game losing, not a win.
+`StepBalloon` still gains the same bounds test the player already had, with the same 2 m margin
+and all four directions checked, killing with `DeathCause.BalloonLeftRoom = 6`. But because only
+the floor side of `TileGrid` was opened, the sideways and upward legs of that check are
+unreachable in practice: the ceiling and side walls stay solid out to infinity, exactly as the
+player's own check already was before this work, so a runaway body still cannot fly off sideways
+or upward. Only a fall out the bottom — past whatever floor tiles exist, and then past the room's
+open lower bound — can actually reach this check. It is kept for symmetry with the player's
+check and because "impossible today" is not a promise about every future panel shape, not because
+escaping upward is a real outcome to design for.
 
 The margin is deliberately outside the room rather than at its edge — a bump can carry a body a
 little past the wall and back, and killing at the boundary would make the walls feel like
