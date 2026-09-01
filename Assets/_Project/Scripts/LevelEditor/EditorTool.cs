@@ -39,6 +39,9 @@ namespace KeepyUppy.LevelEditing
         /// exists to prevent.
         /// </summary>
         Trigger = 8,
+
+        /// <summary>9 — drag a rect of tiles a link can take away (tile-panels design).</summary>
+        Panel = 9,
     }
 
     public enum EditorMode
