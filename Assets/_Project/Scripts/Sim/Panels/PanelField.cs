@@ -39,6 +39,7 @@ namespace KeepyUppy.Sim.Panels
             if (panel == null) return;
 
             _panels.Add(panel);
+            Dirty = true;
         }
 
         public int IndexOf(string id)

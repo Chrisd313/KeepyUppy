@@ -117,13 +117,29 @@ namespace KeepyUppy.SimTests
         [Test]
         public void AnUnknownId_ChangesNothing()
         {
+            TileGrid grid = Room();
             var panels = new PanelField();
             panels.Add(Panel("p01", new RectInt(10, 4, 6, 1)));
+            panels.Apply(grid);
 
             panels.SetEnabled("nope", false);
 
             Assert.IsTrue(panels[0].Enabled);
             Assert.IsFalse(panels.Dirty);
+        }
+
+        [Test]
+        public void SetEnabled_ToItsCurrentValue_ChangesNothing()
+        {
+            TileGrid grid = Room();
+            var panels = new PanelField();
+            panels.Add(Panel("p01", new RectInt(10, 4, 6, 1)));
+            panels.Apply(grid);
+
+            panels.SetEnabled("p01", true);
+
+            Assert.IsFalse(panels.Dirty, "already on, setting on again is not a change");
+            Assert.AreEqual(0, panels.TurnedOnThisStep.Count);
         }
     }
 }
