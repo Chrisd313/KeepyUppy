@@ -178,6 +178,7 @@ namespace KeepyUppy.Sim.Level
 
             if (level.entities != null) foreach (var e in level.entities) Register(e?.id, "entity");
             if (level.zones != null) foreach (var z in level.zones) Register(z?.id, "zone");
+            if (level.panels != null) foreach (var p in level.panels) Register(p?.id, "panel");
             if (level.triggers != null) foreach (var t in level.triggers) Register(t?.id, "trigger");
 
             // Sorted so the warning list is stable between runs.

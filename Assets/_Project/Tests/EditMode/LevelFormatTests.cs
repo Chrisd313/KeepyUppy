@@ -180,6 +180,48 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void Panels_RoundTrip()
+        {
+            LevelData level = FullLevel();
+            level.panels = new[]
+            {
+                new LevelPanel { id = "p01", rect = new[] { 12f, 4f, 6f, 1f }, start_state = "on" },
+                new LevelPanel { id = "p02", rect = new[] { 20f, 9f, 3f, 1f }, start_state = "off" },
+            };
+
+            _source.Save(level.id, level);
+            Assert.IsTrue(_source.TryLoad(level.id, out LevelData loaded));
+
+            Assert.AreEqual(2, loaded.panels.Length);
+            Assert.AreEqual("p01", loaded.panels[0].id);
+            Assert.AreEqual(new[] { 12f, 4f, 6f, 1f }, loaded.panels[0].rect);
+            Assert.AreEqual("off", loaded.panels[1].start_state);
+        }
+
+        [Test]
+        public void ALevelWithNoPanels_LoadsAnEmptyArray_NotNull()
+        {
+            var level = JsonUtility.FromJson<LevelData>("{\"id\":\"w1_01\"}");
+
+            Assert.IsNotNull(level.panels, "a file written before panels existed must still load");
+            Assert.AreEqual(0, level.panels.Length);
+        }
+
+        [Test]
+        public void APanelIdColliding_WithAZoneId_IsWarned()
+        {
+            LevelData level = FullLevel();
+            level.zones = new[] { new LevelZone { id = "x01", type = "air", rect = new[] { 2f, 2f, 2f, 2f } } };
+            level.panels = new[] { new LevelPanel { id = "x01", rect = new[] { 8f, 1f, 2f, 1f } } };
+
+            bool warned = false;
+            foreach (string w in LevelValidator.Validate(level))
+                if (w.Contains("duplicate id 'x01'")) warned = true;
+
+            Assert.IsTrue(warned, "panel ids share one namespace with entities, zones and triggers");
+        }
+
+        [Test]
         public void SavedLevel_IsReadableJson()
         {
             _source.Save("w1_01", FullLevel());
