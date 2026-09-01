@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace KeepyUppy.Sim
 {
     /// <summary>
@@ -30,6 +32,13 @@ namespace KeepyUppy.Sim
         readonly TileKind[] _cells = new TileKind[Width * Height];
 
         /// <summary>
+        /// Cells currently hidden by a panel (tile-panels design). Parallel to _cells, which
+        /// is never written by a panel: the level's geometry stays exactly as it loaded, so
+        /// the worst a panel bug can do is show the wrong tiles for one run.
+        /// </summary>
+        readonly bool[] _masked = new bool[Width * Height];
+
+        /// <summary>
         /// Incremented on every change. Rendering watches this to know when to rebuild,
         /// which is what lets the editor paint tiles and see them immediately.
         /// </summary>
@@ -37,7 +46,13 @@ namespace KeepyUppy.Sim
 
         public TileKind this[int x, int y]
         {
-            get => InBounds(x, y) ? _cells[y * Width + x] : TileKind.Solid;
+            get
+            {
+                if (!InBounds(x, y)) return TileKind.Solid;
+
+                int i = y * Width + x;
+                return _masked[i] ? TileKind.Empty : _cells[i];
+            }
             set
             {
                 if (!InBounds(x, y)) return;
@@ -89,6 +104,7 @@ namespace KeepyUppy.Sim
 
         public void Clear()
         {
+            ClearMask();
             for (int i = 0; i < _cells.Length; i++) _cells[i] = TileKind.Empty;
             Version++;
         }
@@ -98,6 +114,46 @@ namespace KeepyUppy.Sim
             for (int ty = y; ty < y + h; ty++)
             for (int tx = x; tx < x + w; tx++)
                 this[tx, ty] = kind;
+        }
+
+        public bool IsMasked(int x, int y) => InBounds(x, y) && _masked[y * Width + x];
+
+        /// <summary>
+        /// Hides or reveals a rectangle of cells. Version moves only when something actually
+        /// changed, so a panel re-applying its own state does not churn the tile views.
+        /// </summary>
+        public void SetMasked(RectInt rect, bool masked)
+        {
+            bool changed = false;
+
+            for (int y = rect.yMin; y < rect.yMax; y++)
+            for (int x = rect.xMin; x < rect.xMax; x++)
+            {
+                if (!InBounds(x, y)) continue;
+
+                int i = y * Width + x;
+                if (_masked[i] == masked) continue;
+
+                _masked[i] = masked;
+                changed = true;
+            }
+
+            if (changed) Version++;
+        }
+
+        public void ClearMask()
+        {
+            bool changed = false;
+
+            for (int i = 0; i < _masked.Length; i++)
+            {
+                if (!_masked[i]) continue;
+
+                _masked[i] = false;
+                changed = true;
+            }
+
+            if (changed) Version++;
         }
 
         /// <summary>Solid border one tile thick around the whole room.</summary>
@@ -166,6 +222,7 @@ namespace KeepyUppy.Sim
         /// </summary>
         public void LoadRows(string[] rows)
         {
+            ClearMask();
             Clear();
             int count = rows.Length < Height ? rows.Length : Height;
             for (int r = 0; r < count; r++)
