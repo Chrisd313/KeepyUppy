@@ -38,7 +38,7 @@
         "halfWidth": 0.4000000059604645,
         "halfHeight": 0.800000011920929,
         "groundAccelFrames": 4,
-        "airAccelFrames": 8,
+        "airAccelFrames": 1,
         "jumpCutMultiplier": 0.3877550959587097,
         "deathRestartFrames": 6
     }

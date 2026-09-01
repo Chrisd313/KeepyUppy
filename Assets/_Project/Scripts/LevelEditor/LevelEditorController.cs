@@ -73,6 +73,17 @@ namespace KeepyUppy.LevelEditing
         /// <summary>Drag-in-progress creates a trigger rather than moving one.</summary>
         bool _triggerCreating;
 
+        /// <summary>Which corner handle the current panel drag has hold of, if any.</summary>
+        ZoneCorner _panelCorner;
+
+        Vector2Int _panelAnchor;
+
+        /// <summary>Cursor-to-bottom-left offset, so a moved panel does not jump to the cursor.</summary>
+        Vector2 _panelDragOffset;
+
+        /// <summary>Drag-in-progress creates a panel rather than moving one.</summary>
+        bool _panelCreating;
+
         // Overlays
         bool _showPanel = true;
         bool _showGrid = true;
@@ -210,10 +221,12 @@ namespace KeepyUppy.LevelEditing
             if (kb.digit5Key.wasPressedThisFrame) Session.Tool = EditorTool.Path;
             if (kb.pKey.wasPressedThisFrame) Session.Tool = EditorTool.Place;
             if (kb.digit8Key.wasPressedThisFrame) Session.Tool = EditorTool.Trigger;
+            if (kb.digit9Key.wasPressedThisFrame) Session.Tool = EditorTool.Panel;
             if (kb.digit6Key.wasPressedThisFrame) Session.Tool = EditorTool.Link;
 
             if (Session.Tool != EditorTool.Zone) _zoneForceNew = false;
             if (Session.Tool != EditorTool.Trigger) { _triggerCorner = ZoneCorner.None; _triggerCreating = false; }
+            if (Session.Tool != EditorTool.Panel) { _panelCorner = ZoneCorner.None; _panelCreating = false; }
 
             // A toggle, not a one-way arm, so it can be cancelled without Escape - which is
             // the shell's Back (KeyboardShellInput) and reserved by CLAUDE.md's keybind list.
@@ -261,6 +274,15 @@ namespace KeepyUppy.LevelEditing
                 SyncDynamic();
                 _status = "deleted trigger";
             }
+
+            if (kb.deleteKey.wasPressedThisFrame && Session.Tool == EditorTool.Panel
+                && Session.SelectedPanelId != null)
+            {
+                Session.BeginEdit();
+                Session.DeletePanel(Session.SelectedPanelId);
+                SyncDynamic();
+                _status = "deleted panel";
+            }
         }
 
         void HandleMouse()
@@ -293,6 +315,7 @@ namespace KeepyUppy.LevelEditing
                 case EditorTool.Path: PathTool(mouse, world); break;
                 case EditorTool.Place: PlaceTool(mouse, world); break;
                 case EditorTool.Trigger: TriggerTool(mouse, world); break;
+                case EditorTool.Panel: PanelTool(mouse, world); break;
                 case EditorTool.Link: LinkTool(mouse, world); break;
             }
         }
@@ -558,6 +581,96 @@ namespace KeepyUppy.LevelEditing
         }
 
         /// <summary>
+        /// Panel rects (tile-panels design). Identical in shape to TriggerTool and ZoneTool:
+        /// all three are tile rects on the same grid, so all three route through ZoneGeometry.
+        /// </summary>
+        void PanelTool(Mouse mouse, Vector2 world)
+        {
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                LevelPanel hit = Session.PanelAt(world);
+                if (hit != null)
+                {
+                    Session.BeginEdit();
+                    Session.DeletePanel(hit.id);
+                    SyncDynamic();
+                    _status = "deleted panel";
+                }
+
+                return;
+            }
+
+            if (mouse.leftButton.wasPressedThisFrame)
+            {
+                LevelPanel selected = Session.FindPanel(Session.SelectedPanelId);
+
+                _panelCorner = selected?.rect != null
+                    ? ZoneGeometry.HandleAt(ZoneGeometry.RectOf(selected.rect), world, ZoneHandleRadius)
+                    : ZoneCorner.None;
+
+                LevelPanel hit = Session.PanelAt(world);
+
+                if (_panelCorner != ZoneCorner.None)
+                {
+                    _panelAnchor = ZoneGeometry.AnchorOf(ZoneGeometry.RectOf(selected.rect), _panelCorner);
+                    Session.BeginEdit();
+                    _panelCreating = false;
+                    _dragging = true;
+                }
+                else if (hit != null)
+                {
+                    Session.SelectPanel(hit.id);
+                    Rect rect = ZoneGeometry.RectOf(hit.rect);
+                    _panelDragOffset = new Vector2(rect.xMin, rect.yMin) - world;
+                    Session.BeginEdit();
+                    _panelCreating = false;
+                    _dragging = true;
+                }
+                else
+                {
+                    _dragStart = GridCursor.ToTile(world);
+                    _panelCreating = true;
+                    _dragging = true;
+                }
+            }
+
+            if (!_dragging) return;
+
+            if (_panelCreating)
+            {
+                if (!mouse.leftButton.wasReleasedThisFrame) return;
+
+                Session.BeginEdit();
+                LevelPanel created = Session.AddPanel(ZoneGeometry.Normalise(_dragStart, GridCursor.ToTile(world)));
+                SyncDynamic();
+
+                _dragging = false;
+                _panelCreating = false;
+                _status = $"added {created.id}";
+                return;
+            }
+
+            LevelPanel dragged = Session.FindPanel(Session.SelectedPanelId);
+            if (dragged?.rect == null) { _dragging = false; return; }
+
+            Rect current = ZoneGeometry.RectOf(dragged.rect);
+
+            Rect updated = _panelCorner != ZoneCorner.None
+                ? ZoneGeometry.Normalise(_panelAnchor, GridCursor.ToTile(world))
+                : ZoneGeometry.Move(current, world + _panelDragOffset);
+
+            Session.SetPanelRect(dragged.id, updated);
+            SyncDynamic();
+
+            if (mouse.leftButton.wasReleasedThisFrame)
+            {
+                _status = _panelCorner != ZoneCorner.None ? "resized panel" : "moved panel";
+                _dragging = false;
+                _panelCorner = ZoneCorner.None;
+            }
+        }
+
+        /// <summary>
         /// Wiring (level-editor-spec 4, tool 6). Click a trigger, then click an entity, zone
         /// or trigger to wire it. Right-click an arrow to unwire that one target.
         ///
@@ -611,7 +724,11 @@ namespace KeepyUppy.LevelEditing
             _status = $"linked {Session.SelectedTriggerId} → {target}";
         }
 
-        /// <summary>An entity, zone or trigger under the cursor, in that order of precedence.</summary>
+        /// <summary>
+        /// An entity, zone, trigger or panel under the cursor, in that order of precedence.
+        /// Panels go last, so a click that lands on both a trigger and a panel wires the
+        /// trigger.
+        /// </summary>
         string TargetIdAt(Vector2 world)
         {
             LevelEntity entity = Session.EntityAt(world);
@@ -621,7 +738,10 @@ namespace KeepyUppy.LevelEditing
             if (zone != null) return zone.id;
 
             LevelTrigger trigger = Session.TriggerAt(world);
-            return trigger?.id;
+            if (trigger != null) return trigger.id;
+
+            LevelPanel panel = Session.PanelAt(world);
+            return panel?.id;
         }
 
         /// <summary>
@@ -935,6 +1055,7 @@ namespace KeepyUppy.LevelEditing
             if (GUILayout.Button("4 Zone", GUILayout.Width(70f))) Session.Tool = EditorTool.Zone;
             if (GUILayout.Button("5 Path", GUILayout.Width(70f))) Session.Tool = EditorTool.Path;
             if (GUILayout.Button("8 Trigger", GUILayout.Width(70f))) Session.Tool = EditorTool.Trigger;
+            if (GUILayout.Button("9 Panel", GUILayout.Width(70f))) Session.Tool = EditorTool.Panel;
             if (GUILayout.Button("6 Link", GUILayout.Width(70f))) Session.Tool = EditorTool.Link;
             if (GUILayout.Button("P Place", GUILayout.Width(70f))) Session.Tool = EditorTool.Place;
             GUILayout.Space(20f);
@@ -996,6 +1117,12 @@ namespace KeepyUppy.LevelEditing
             if (Session.Tool == EditorTool.Zone && Session.SelectedZoneId != null)
             {
                 DrawZoneInspector();
+                return;
+            }
+
+            if (Session.Tool == EditorTool.Panel && Session.SelectedPanelId != null)
+            {
+                DrawPanelInspector();
                 return;
             }
 
@@ -1087,6 +1214,18 @@ namespace KeepyUppy.LevelEditing
             GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
 
             bool changed = TriggerInspector.Draw(Session, _fieldText);
+
+            GUILayout.EndArea();
+
+            if (changed) SyncDynamic();
+        }
+
+        void DrawPanelInspector()
+        {
+            _inspectorRect = InspectorRect(320f);
+            GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
+
+            bool changed = PanelInspector.Draw(Session, _fieldText);
 
             GUILayout.EndArea();
 
@@ -1398,6 +1537,7 @@ namespace KeepyUppy.LevelEditing
             if (_showSafeArea) DrawSafeArea();
             DrawZones();
             DrawTriggers();
+            DrawPanels();
             DrawLinks();
             if (_showHitboxes) DrawHitboxes();
             DrawEntities();
@@ -1647,6 +1787,46 @@ namespace KeepyUppy.LevelEditing
                 DrawHandle(new Vector2(rect.xMax, rect.yMax));
             }
         }
+
+        /// <summary>
+        /// Every panel, outlined; one that starts hidden is also hatched, so the author can
+        /// see geometry the player will not. Amber — not the trigger violet, not hazard red,
+        /// not balloon yellow (GDD 13.1).
+        /// </summary>
+        void DrawPanels()
+        {
+            if (Session.Level.panels == null) return;
+
+            foreach (LevelPanel panel in Session.Level.panels)
+            {
+                if (panel?.rect == null || panel.rect.Length < 4) continue;
+
+                Rect rect = ZoneGeometry.RectOf(panel.rect);
+                bool selected = panel.id == Session.SelectedPanelId;
+
+                DrawWorldRect(new Rect(rect.xMin, rect.yMax - 0.08f, rect.width, 0.08f), PanelEdge);
+                DrawWorldRect(new Rect(rect.xMin, rect.yMin, rect.width, 0.08f), PanelEdge);
+                DrawWorldRect(new Rect(rect.xMin, rect.yMin, 0.08f, rect.height), PanelEdge);
+                DrawWorldRect(new Rect(rect.xMax - 0.08f, rect.yMin, 0.08f, rect.height), PanelEdge);
+
+                // Hidden at load: hatch it so the author sees tiles the player will not.
+                if (panel.start_state == "off")
+                {
+                    for (float x = rect.xMin; x < rect.xMax; x += 0.5f)
+                        DrawWorldRect(new Rect(x, rect.yMin, 0.12f, rect.height), PanelHatch);
+                }
+
+                if (!selected) continue;
+
+                DrawHandle(new Vector2(rect.xMin, rect.yMin));
+                DrawHandle(new Vector2(rect.xMax, rect.yMin));
+                DrawHandle(new Vector2(rect.xMin, rect.yMax));
+                DrawHandle(new Vector2(rect.xMax, rect.yMax));
+            }
+        }
+
+        static readonly Color PanelEdge = new Color(0.95f, 0.65f, 0.25f, 0.85f);
+        static readonly Color PanelHatch = new Color(0.95f, 0.65f, 0.25f, 0.25f);
 
         /// <summary>
         /// One line per wired target, from the trigger's centre to the target's. The same

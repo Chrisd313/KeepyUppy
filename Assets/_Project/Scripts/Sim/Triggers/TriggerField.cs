@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using KeepyUppy.Sim.Entities;
+using KeepyUppy.Sim.Panels;
 using UnityEngine;
 
 namespace KeepyUppy.Sim.Triggers
@@ -94,7 +95,7 @@ namespace KeepyUppy.Sim.Triggers
         /// materialise inside the body that armed it, in the frame it armed it.
         /// </summary>
         public void Step(int step, Vector2 playerPos, bool hasPlayer, Vector2 balloonPos,
-                         EntityField entities, AirField air)
+                         EntityField entities, AirField air, PanelField panels)
         {
             FiredThisStep.Clear();
 
@@ -126,7 +127,7 @@ namespace KeepyUppy.Sim.Triggers
                 }
             }
 
-            Drain(step, entities, air);
+            Drain(step, entities, air, panels);
         }
 
         /// <summary>
@@ -134,7 +135,7 @@ namespace KeepyUppy.Sim.Triggers
         /// Forward iteration is load-bearing: two links landing on the same step must apply in
         /// the order they were queued, on every run.
         /// </summary>
-        void Drain(int step, EntityField entities, AirField air)
+        void Drain(int step, EntityField entities, AirField air, PanelField panels)
         {
             int keep = 0;
 
@@ -148,13 +149,13 @@ namespace KeepyUppy.Sim.Triggers
                     continue;
                 }
 
-                Apply(_links[item.link], entities, air, step);
+                Apply(_links[item.link], entities, air, panels, step);
             }
 
             _pending.RemoveRange(keep, _pending.Count - keep);
         }
 
-        static void Apply(SimLink link, EntityField entities, AirField air, int step)
+        static void Apply(SimLink link, EntityField entities, AirField air, PanelField panels, int step)
         {
             if (link.Action == LinkAction.Inert || link.ToIds == null) return;
 
@@ -172,16 +173,22 @@ namespace KeepyUppy.Sim.Triggers
                     continue;
                 }
 
-                if (air == null) continue;
-
-                for (int i = 0; i < air.Count; i++)
+                if (air != null)
                 {
-                    if (air[i].id != id) continue;
+                    for (int i = 0; i < air.Count; i++)
+                    {
+                        if (air[i].id != id) continue;
 
-                    AirZone zone = air[i];
-                    zone.enabled = Next(link.Action, zone.enabled);
-                    air[i] = zone;
+                        AirZone zone = air[i];
+                        zone.enabled = Next(link.Action, zone.enabled);
+                        air[i] = zone;
+                    }
                 }
+
+                // Panels last: a panel is geometry, and an id naming one is not naming an
+                // entity or a zone. On shows its tiles, Off takes them away.
+                if (panels != null && panels.IndexOf(id) >= 0)
+                    panels.SetEnabled(id, Next(link.Action, panels.Find(id).Enabled));
             }
         }
 

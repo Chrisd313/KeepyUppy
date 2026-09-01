@@ -283,5 +283,61 @@ namespace KeepyUppy.SimTests
             Assert.IsFalse(Mentions(warnings, "trigger"), string.Join(" | ", warnings));
             Assert.IsFalse(Mentions(warnings, "link"), string.Join(" | ", warnings));
         }
+
+        [Test]
+        public void APanelNothingLinksFrom_IsWarned()
+        {
+            LevelData level = Valid();
+            level.panels = new[] { new LevelPanel { id = "p01", rect = new[] { 4f, 1f, 4f, 1f } } };
+
+            AssertWarns(level, "nothing links to panel 'p01'");
+        }
+
+        [Test]
+        public void APanelWithAZeroAreaRect_IsWarned()
+        {
+            LevelData level = Valid();
+            level.panels = new[] { new LevelPanel { id = "p01", rect = new[] { 4f, 1f, 0f, 1f } } };
+            level.links = new[] { new LevelLink { from = "t01", to = new[] { "p01" }, action = "off" } };
+            level.triggers = new[]
+            {
+                new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 2f, 1f, 2f, 2f } },
+            };
+
+            AssertWarns(level, "zero-area");
+        }
+
+        [Test]
+        public void APanelCoveringNoTiles_IsWarned()
+        {
+            // The lint that earns its keep: a rect placed a few tiles off the floor it meant
+            // to take away masks nothing at all, and nothing else would ever tell the author.
+            LevelData level = Valid();
+            level.panels = new[] { new LevelPanel { id = "p01", rect = new[] { 4f, 9f, 4f, 1f } } };
+            level.triggers = new[]
+            {
+                new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 2f, 1f, 2f, 2f } },
+            };
+            level.links = new[] { new LevelLink { from = "t01", to = new[] { "p01" }, action = "off" } };
+
+            AssertWarns(level, "covers no tiles");
+        }
+
+        [Test]
+        public void AWellFormedPanel_ProducesNoPanelWarnings()
+        {
+            LevelData level = Valid();
+
+            // Valid() is a bordered room, so row 0 is solid across its whole width.
+            level.panels = new[] { new LevelPanel { id = "p01", rect = new[] { 4f, 0f, 4f, 1f } } };
+            level.triggers = new[]
+            {
+                new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 2f, 1f, 2f, 2f } },
+            };
+            level.links = new[] { new LevelLink { from = "t01", to = new[] { "p01" }, action = "off" } };
+
+            Assert.IsFalse(Mentions(LevelValidator.Validate(level), "panel"),
+                           string.Join(" | ", LevelValidator.Validate(level)));
+        }
     }
 }

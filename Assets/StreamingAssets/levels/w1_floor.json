@@ -1,0 +1,90 @@
+{
+    "id": "w1_floor",
+    "name": "The Trapdoor",
+    "world": 1,
+    "index": 98,
+    "spawn": {
+        "player": [
+            4.0,
+            2.0
+        ],
+        "balloon": [
+            6.0,
+            13.0
+        ],
+        "balloon_inflation": "nominal"
+    },
+    "exit": {
+        "pos": [
+            29.0,
+            4.0
+        ],
+        "shape": "ring",
+        "diameter": 1.6,
+        "required_band": "nominal"
+    },
+    "tiles": [
+        "################################",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "#..............................#",
+        "################################"
+    ],
+    "entities": [],
+    "zones": [],
+    "panels": [
+        {
+            "id": "p01",
+            "rect": [
+                16.0,
+                0.0,
+                3.0,
+                1.0
+            ],
+            "start_state": "on"
+        }
+    ],
+    "links": [
+        {
+            "from": "t01",
+            "to": [
+                "p01"
+            ],
+            "action": "off",
+            "delay": 0.1
+        }
+    ],
+    "triggers": [
+        {
+            "id": "t01",
+            "type": "player_region",
+            "rect": [
+                14.0,
+                0.0,
+                2.0,
+                18.0
+            ],
+            "once": true,
+            "visible": false,
+            "seconds": 0.0
+        }
+    ],
+    "meta": {
+        "par_touches": 5,
+        "author_note": "Draft: the floor at x=16-19 is a 3-tile panel that gives way underfoot. Trigger t01 is the last two tiles of solid floor before the gap (x=14-16), armed once, with a 0.1s beat before p01 drops off. Commit to the jump; the far floor at x=19+ is solid. Not in index.json on purpose.",
+        "tuning_profile": "default"
+    }
+}

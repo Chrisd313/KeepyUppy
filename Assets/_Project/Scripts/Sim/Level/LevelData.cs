@@ -35,6 +35,7 @@ namespace KeepyUppy.Sim.Level
 
         public LevelEntity[] entities = new LevelEntity[0];
         public LevelZone[] zones = new LevelZone[0];
+        public LevelPanel[] panels = new LevelPanel[0];
         public LevelLink[] links = new LevelLink[0];
         public LevelTrigger[] triggers = new LevelTrigger[0];
 
@@ -112,6 +113,25 @@ namespace KeepyUppy.Sim.Level
         public float length;
         public float delay;
         public float duration;
+    }
+
+    /// <summary>
+    /// A rectangle of authored tiles a link can take away (GDD 9.3's falling floor).
+    ///
+    /// The tiles themselves live in <see cref="LevelData.tiles"/> like any others; a panel
+    /// only says which of them can be switched. start_state "off" hides them at load, which
+    /// is how an *appearing* platform is authored — the same object, inverted.
+    /// </summary>
+    [Serializable]
+    public sealed class LevelPanel
+    {
+        public string id = "p01";
+
+        /// <summary>[x, y, w, h] in tiles. Snapped to whole tiles, as a zone rect is.</summary>
+        public float[] rect = { 0f, 0f, 1f, 1f };
+
+        /// <summary>on | off — whether its tiles are present at the start of the run.</summary>
+        public string start_state = "on";
     }
 
     [Serializable]
