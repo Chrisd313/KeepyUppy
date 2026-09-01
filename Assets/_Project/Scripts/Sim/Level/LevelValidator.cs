@@ -27,6 +27,7 @@ namespace KeepyUppy.Sim.Level
             ValidateIds(level, warnings);
             ValidateEntities(level, warnings);
             ValidateTriggers(level, warnings);
+            ValidatePanels(level, warnings);
             ValidateMeta(level, warnings);
 
             return warnings;
@@ -304,6 +305,67 @@ namespace KeepyUppy.Sim.Level
                 if (same)
                     warnings.Add($"triggers '{a.id}' and '{b.id}' have identical rects");
             }
+        }
+
+        /// <summary>
+        /// Panels (tile-panels design). Duplicate ids and links naming a missing panel are
+        /// already covered by ValidateIds; this is everything else.
+        /// </summary>
+        static void ValidatePanels(LevelData level, List<string> warnings)
+        {
+            if (level.panels == null || level.panels.Length == 0) return;
+
+            var grid = new TileGrid();
+            grid.LoadRows(level.tiles ?? new string[0]);
+
+            foreach (LevelPanel panel in level.panels)
+            {
+                if (panel == null) continue;
+
+                float[] r = panel.rect;
+
+                if (r == null || r.Length < 4 || r[2] <= 0f || r[3] <= 0f)
+                {
+                    warnings.Add($"panel '{panel.id}' has a zero-area rect");
+                    continue;
+                }
+
+                if (!LinkedTo(level, panel.id))
+                    warnings.Add($"nothing links to panel '{panel.id}'");
+
+                if (!CoversATile(grid, r))
+                    warnings.Add($"panel '{panel.id}' covers no tiles — it would hide nothing");
+            }
+        }
+
+        static bool CoversATile(TileGrid grid, float[] rect)
+        {
+            int x0 = Mathf.RoundToInt(rect[0]);
+            int y0 = Mathf.RoundToInt(rect[1]);
+            int x1 = x0 + Mathf.RoundToInt(rect[2]);
+            int y1 = y0 + Mathf.RoundToInt(rect[3]);
+
+            for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++)
+                if (TileGrid.InBounds(x, y) && grid[x, y] != TileKind.Empty) return true;
+
+            return false;
+        }
+
+        /// <summary>Whether any link names this id as a target. A panel is never a source.</summary>
+        static bool LinkedTo(LevelData level, string id)
+        {
+            if (level.links == null || string.IsNullOrEmpty(id)) return false;
+
+            foreach (LevelLink link in level.links)
+            {
+                if (link?.to == null) continue;
+
+                foreach (string target in link.to)
+                    if (target == id) return true;
+            }
+
+            return false;
         }
 
         static void ValidateMeta(LevelData level, List<string> warnings)
