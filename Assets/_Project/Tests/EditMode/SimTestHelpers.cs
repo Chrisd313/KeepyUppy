@@ -2,6 +2,7 @@ using System;
 using KeepyUppy.InputLayer;
 using KeepyUppy.Sim;
 using KeepyUppy.Sim.Entities;
+using KeepyUppy.Sim.Level;
 using KeepyUppy.Sim.Panels;
 using KeepyUppy.Sim.Triggers;
 using NUnit.Framework;
@@ -273,6 +274,40 @@ namespace KeepyUppy.SimTests
             world.Configure(new Vector2(6f, 12f), new Vector2(1.5f, 0f),
                             new Vector2(4f, 1.5f), BusyScript(), seed);
 
+            return world;
+        }
+
+        /// <summary>
+        /// A room whose floor is taken away by a once:true region the scripted player walks
+        /// into. Panels add run state — the enabled flags and the mask built from them — and
+        /// state the replay test cannot see is state that rots silently (CLAUDE.md).
+        /// </summary>
+        public static SimWorld BuildFallingFloorRoom(int seed)
+        {
+            var grid = new TileGrid();
+            grid.FillBorder();
+            grid.Fill(8, 1, 12, 1, TileKind.Solid);
+
+            var level = new LevelData
+            {
+                tiles = grid.ToRows(),
+                panels = new[]
+                {
+                    new LevelPanel { id = "p01", rect = new[] { 12f, 1f, 6f, 1f }, start_state = "on" },
+                },
+                triggers = new[]
+                {
+                    new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 6f, 1f, 6f, 4f }, once = true },
+                },
+                links = new[]
+                {
+                    new LevelLink { from = "t01", to = new[] { "p01" }, action = "off", delay = 0.25f },
+                },
+            };
+
+            var world = new SimWorld { EnableFlutter = true, FloorKillsBalloon = false };
+            LevelLoader.Apply(level, world, out Vector2 balloonSpawn, out Vector2 playerSpawn);
+            world.Configure(balloonSpawn, new Vector2(1.5f, 0f), playerSpawn, BusyScript(), seed);
             return world;
         }
 

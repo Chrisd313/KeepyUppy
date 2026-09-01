@@ -102,6 +102,52 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void FallingFloorRoom_SameSeed_BitIdenticalEveryStep()
+        {
+            SimWorld a = SimTestHelpers.BuildFallingFloorRoom(Seed);
+            SimWorld b = SimTestHelpers.BuildFallingFloorRoom(Seed);
+
+            for (int i = 0; i < Steps; i++)
+            {
+                a.Tick();
+                b.Tick();
+
+                SimSnapshot.Capture(a).AssertMatches(SimSnapshot.Capture(b), $"falling floor step {i}");
+            }
+        }
+
+        [Test]
+        public void FallingFloorRoom_ResetAndReplayed_BitIdentical()
+        {
+            SimWorld world = SimTestHelpers.BuildFallingFloorRoom(Seed);
+
+            world.Tick(Steps);
+            SimSnapshot first = SimSnapshot.Capture(world);
+
+            world.Restart();
+            world.Tick(Steps);
+
+            first.AssertMatches(SimSnapshot.Capture(world), "falling floor after replay");
+        }
+
+        [Test]
+        public void FallingFloorRoom_ActuallyTakesTheFloorAway()
+        {
+            // Guards the tests above from passing for the wrong reason: a room where the
+            // trigger never fires would replay identically while proving nothing.
+            SimWorld world = SimTestHelpers.BuildFallingFloorRoom(Seed);
+
+            bool everMasked = false;
+            for (int i = 0; i < Steps && !everMasked; i++)
+            {
+                world.Tick();
+                if (world.Grid[14, 1] == TileKind.Empty) everMasked = true;
+            }
+
+            Assert.IsTrue(everMasked, "the scripted run should walk into the trigger");
+        }
+
+        [Test]
         public void DifferentSeed_ProducesDifferentPath()
         {
             // Guards the opposite failure: a seed that is plumbed but ignored would make
