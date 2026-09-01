@@ -351,10 +351,21 @@ namespace KeepyUppy.LevelEditing
             if (mouse.leftButton.wasPressedThisFrame)
             {
                 LevelEntity hit = Session.EntityAt(world);
+                SpawnMarker spawn = hit == null ? Session.SpawnAt(world) : SpawnMarker.None;
+
                 if (hit != null)
                 {
                     Session.SelectEntity(hit.id);
                     _entityDragOffset = new Vector2(hit.pos[0], hit.pos[1]) - world;
+                    Session.BeginEdit();
+                    _dragging = true;
+                }
+                else if (spawn != SpawnMarker.None)
+                {
+                    // Before the exit for the same reason entities are: the gate is large,
+                    // and a spawn placed in the doorway has to stay grabbable.
+                    Session.SelectSpawn(spawn);
+                    _entityDragOffset = Session.SpawnPos(spawn) - world;
                     Session.BeginEdit();
                     _dragging = true;
                 }
@@ -376,6 +387,13 @@ namespace KeepyUppy.LevelEditing
             if (mouse.leftButton.wasReleasedThisFrame) _dragging = false;
 
             if (!_dragging) return;
+
+            if (Session.SelectedSpawn != SpawnMarker.None)
+            {
+                Session.MoveSpawn(Session.SelectedSpawn, world + _entityDragOffset);
+                SyncSpawns();
+                return;
+            }
 
             if (Session.ExitSelected)
             {
@@ -827,6 +845,23 @@ namespace KeepyUppy.LevelEditing
         /// <summary>The gate lives on the world, not the entity list, so it syncs its own way.</summary>
         void SyncExit() => Host.SyncExit(Session.Level);
 
+        /// <summary>
+        /// Puts the frozen bodies on their spawns, which is what makes the spawns visible at
+        /// all: there is no marker sprite, the balloon and the player *are* the markers.
+        ///
+        /// Position only. The sim is paused while authoring and entering play calls
+        /// ApplyLevel, which restarts from the spawns properly — so velocity here would be
+        /// state that never gets read.
+        /// </summary>
+        void SyncSpawns()
+        {
+            SimWorld world = Host.World;
+            if (world == null) return;
+
+            world.Balloon.Position = Session.SpawnPos(SpawnMarker.Balloon);
+            world.Player.Position = Session.SpawnPos(SpawnMarker.Player);
+        }
+
         /// <summary>Screen point (y up) against the GUI rects (y down).</summary>
         bool PointerOverUi(Vector2 screen)
         {
@@ -1133,6 +1168,8 @@ namespace KeepyUppy.LevelEditing
                 return;
             }
 
+            if (Session.SelectedSpawn != SpawnMarker.None) { DrawSpawnInspector(); return; }
+
             if (Session.ExitSelected) { DrawExitInspector(); return; }
 
             LevelEntity entity = Session.FindEntity(Session.SelectedEntityId);
@@ -1237,6 +1274,38 @@ namespace KeepyUppy.LevelEditing
         /// spelled out: "1.6 m" means little while authoring, but "fits up to nominal" is the
         /// sentence the level is actually making.
         /// </summary>
+        /// <summary>
+        /// The selected spawn's coordinates. Typed as well as dragged, because "one tile left"
+        /// is a thing an author knows before they know where the cursor has to go.
+        /// </summary>
+        void DrawSpawnInspector()
+        {
+            SpawnMarker marker = Session.SelectedSpawn;
+            Vector2 pos = Session.SpawnPos(marker);
+            string name = marker == SpawnMarker.Balloon ? "balloon" : "player";
+
+            _inspectorRect = InspectorRect(120f);
+            GUILayout.BeginArea(_inspectorRect, GUI.skin.box);
+
+            GUILayout.Label($"{name} spawn");
+
+            float x = FloatRow("x", $"spawn.{name}.x", pos.x);
+            float y = FloatRow("y", $"spawn.{name}.y", pos.y);
+            if (!Mathf.Approximately(x, pos.x) || !Mathf.Approximately(y, pos.y))
+            {
+                Session.BeginEdit();
+                Session.MoveSpawn(marker, new Vector2(x, y));
+                SyncSpawns();
+            }
+
+            if (marker == SpawnMarker.Balloon)
+            {
+                GUILayout.Label($"inflation: {Session.Level.spawn?.balloon_inflation ?? "nominal"}");
+            }
+
+            GUILayout.EndArea();
+        }
+
         void DrawExitInspector()
         {
             LevelExit exit = Session.Level.exit;
