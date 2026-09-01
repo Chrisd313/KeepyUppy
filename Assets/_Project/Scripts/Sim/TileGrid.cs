@@ -220,6 +220,13 @@ namespace KeepyUppy.Sim
         /// <summary>
         /// The grid as level-JSON rows, row 0 being the top of the room. Inverse of
         /// <see cref="LoadRows"/>.
+        ///
+        /// Reads <see cref="BaseAt"/>, never the masked indexer: this is the authored level,
+        /// not whatever a panel happens to be hiding this frame. A panel hides tiles, it does
+        /// not delete them, and the editor shares the world's live grid — sharing that lets
+        /// live editing work, but it also means whatever ToRows serialises here can be flushed
+        /// to LevelData mid-edit. Serialising the masked view would bake a currently-hidden
+        /// panel's hole into the level permanently.
         /// </summary>
         public string[] ToRows()
         {
@@ -229,7 +236,7 @@ namespace KeepyUppy.Sim
             for (int r = 0; r < Height; r++)
             {
                 int y = Height - 1 - r;
-                for (int x = 0; x < Width; x++) chars[x] = ToChar(this[x, y]);
+                for (int x = 0; x < Width; x++) chars[x] = ToChar(BaseAt(x, y));
                 rows[r] = new string(chars);
             }
 

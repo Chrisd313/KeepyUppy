@@ -92,5 +92,32 @@ namespace KeepyUppy.SimTests
 
             Assert.IsFalse(grid.IsMasked(12, 4), "a fresh level starts unmasked");
         }
+
+        [Test]
+        public void ToRows_SerialisesTheAuthoredTiles_NotTheMaskedView()
+        {
+            TileGrid grid = Room();
+            string[] before = grid.ToRows();
+
+            grid.SetMasked(new RectInt(10, 4, 6, 1), true);
+
+            Assert.AreEqual(TileKind.Empty, grid[12, 4], "the mask still hides it from collision");
+            Assert.AreEqual(before, grid.ToRows(),
+                            "but the level's own geometry is unchanged — a panel hides tiles, it does not delete them");
+        }
+
+        [Test]
+        public void ARoundTripThroughToRows_UnderAMask_KeepsTheFloor()
+        {
+            // The editor's Flush() does exactly this: Level.tiles = Grid.ToRows(). If a panel
+            // is off at that moment, a mask-aware ToRows would bake the hole into the level.
+            TileGrid grid = Room();
+            grid.SetMasked(new RectInt(10, 4, 6, 1), true);
+
+            var reloaded = new TileGrid();
+            reloaded.LoadRows(grid.ToRows());
+
+            Assert.IsTrue(reloaded.IsSolid(12, 4), "the floor survives a save while a panel is off");
+        }
     }
 }
