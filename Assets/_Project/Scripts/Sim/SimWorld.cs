@@ -404,6 +404,23 @@ namespace KeepyUppy.Sim
 
             // GDD 4.3: gravity is the clock, and this is where it runs out.
             if (FloorKillsBalloon && result.hitFloor) Kill(DeathCause.BalloonHitFloor);
+
+            // The same 2 m margin the player gets, on all four sides. Outside the room rather
+            // than at its edge: a bump can carry a body a little past a wall and back, and
+            // killing at the boundary would make the walls feel like hazards.
+            //
+            // Only the bottom is reachable in practice: TileGrid's indexer opens the floor
+            // below y = 0 (out-of-bounds reads Empty there) so a level with no floor tile of
+            // its own lets the balloon fall out and die here rather than rest on an implicit
+            // floor no one placed. The other three sides of the indexer still read Solid, so
+            // this is — like the player's equivalent check — a safety net that should be
+            // impossible to trigger sideways or upward in a walled level, kept for symmetry
+            // and because "impossible today" is not a promise about every future panel shape.
+            if (Balloon.Position.y < -2f || Balloon.Position.y > TileGrid.Height + 2f ||
+                Balloon.Position.x < -2f || Balloon.Position.x > TileGrid.Width + 2f)
+            {
+                Kill(DeathCause.BalloonLeftRoom);
+            }
         }
     }
 }

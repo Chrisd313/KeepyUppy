@@ -22,5 +22,11 @@ namespace KeepyUppy.Sim
 
         /// <summary>A panel's tiles came back around a body (tile-panels design).</summary>
         Crushed = 5,
+
+        /// <summary>
+        /// The balloon left the room. Reachable once a panel can take away a wall or a floor;
+        /// escaping upward counts, and reads as the balloon getting away.
+        /// </summary>
+        BalloonLeftRoom = 6,
     }
 }

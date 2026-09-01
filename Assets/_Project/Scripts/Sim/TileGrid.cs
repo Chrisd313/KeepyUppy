@@ -48,7 +48,16 @@ namespace KeepyUppy.Sim
         {
             get
             {
-                if (!InBounds(x, y)) return TileKind.Solid;
+                if (!InBounds(x, y))
+                {
+                    // The closing shell stays on three sides — sideways and above, a runaway
+                    // body still cannot fly off, which is the safety net GDD 4.1 relies on.
+                    // Below the room it opens: a level with no floor tile of its own should
+                    // let a body fall through and out (Mario-style pit death) rather than land
+                    // on an implicit floor no one placed. SweptCircle needs no change for this
+                    // — it only ever reads this indexer.
+                    return y < 0 ? TileKind.Empty : TileKind.Solid;
+                }
 
                 int i = y * Width + x;
                 return _masked[i] ? TileKind.Empty : _cells[i];
