@@ -128,6 +128,13 @@ namespace KeepyUppy.Sim
         public bool IsMasked(int x, int y) => InBounds(x, y) && _masked[y * Width + x];
 
         /// <summary>
+        /// The tile a cell holds regardless of any mask. For the debris view, which draws the
+        /// tiles a panel has just hidden — the indexer reports those as Empty by design.
+        /// </summary>
+        public TileKind BaseAt(int x, int y)
+            => InBounds(x, y) ? _cells[y * Width + x] : TileKind.Solid;
+
+        /// <summary>
         /// Hides or reveals a rectangle of cells. Version moves only when something actually
         /// changed, so a panel re-applying its own state does not churn the tile views.
         /// </summary>

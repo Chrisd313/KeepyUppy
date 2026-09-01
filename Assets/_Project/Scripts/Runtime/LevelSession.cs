@@ -60,6 +60,7 @@ namespace KeepyUppy.Runtime
             session.BuildTileViews(world.Grid);
             session.BuildZoneViews(world);
             session.BuildTriggerViews(world);
+            session.BuildPanelViews(world, driver);
             session.BuildEntityViews(world, driver);
             session.BuildExitView(world);
             session.BuildBalloonView(world.Balloon, driver);
@@ -131,6 +132,20 @@ namespace KeepyUppy.Runtime
             root.transform.SetParent(transform, false);
 
             root.AddComponent<TriggerViewSync>().World = world;
+        }
+
+        /// <summary>
+        /// Debris for a floor a panel has just taken away (tile-panels design). Presentation
+        /// only — collision on those cells ended the step the panel switched.
+        /// </summary>
+        void BuildPanelViews(SimWorld world, SimDriver driver)
+        {
+            var root = new GameObject("Panels");
+            root.transform.SetParent(transform, false);
+
+            PanelViewSync view = root.AddComponent<PanelViewSync>();
+            view.World = world;
+            view.Driver = driver;
         }
 
         /// <summary>Hazard quads follow the entities, which move every step (GDD 9).</summary>
