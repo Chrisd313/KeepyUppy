@@ -46,6 +46,10 @@ tests at once, from a single edit.
    `visible: true` trigger.
 6. **The loaded tile rows stay immutable.** The mask is a parallel layer, derived from panel
    state, rebuilt rather than accumulated.
+7. **A vanishing panel's tiles visibly fall.** Presentation only: collision goes at the switch
+   step, and the view drops debris quads that the simulation cannot observe.
+8. **The balloon dies when it leaves the room**, as the player already does. Without this, a
+   floor taken away under the balloon is a level that never ends.
 
 ### On masking rather than editing the grid
 
@@ -154,8 +158,9 @@ and `SimWorld.Tick` — immediately after `Triggers.Step`, before `Clock.Advance
 rects against the player's box and the balloon's circle and calls `Kill(DeathCause.Crushed)`.
 One explosion, one restart, both bodies, in the same step.
 
-`DeathCause` gains `Crushed = 5` (the enum currently ends at `PlayerFellOut = 4`; values are
-explicit because they are recorded, not branched on). The death is not shrunk by the GDD §8 fairness margin: the
+`DeathCause` gains `Crushed = 5`, and `BalloonLeftRoom = 6` for the bounds check below (the
+enum currently ends at `PlayerFellOut = 4`; values are explicit because they are recorded, not
+branched on). The death is not shrunk by the GDD §8 fairness margin: the
 hazard here is the tile arriving, not a hitbox the player was asked to read, and a generous
 inset would let a body sit visibly inside solid geometry and live.
 
@@ -164,6 +169,51 @@ inset would let a body sit visibly inside solid geometry and live.
 Unchanged from the trigger design: triggers evaluate last, effects land on the following step.
 A panel therefore vanishes on the step after the player enters the region, and the crush check
 runs in the same step as the switch that caused it. `delay: 0` still means next step.
+
+### Falling debris
+
+A floor that blinks out of existence reads as a rendering glitch; a floor that falls reads as a
+trap. But a tile that falls *as a solid* is moving-solid collision, which is deferred and is
+exactly the thing this feature does not need. So the fall is **presentation only**.
+
+The rule the project already lives by makes this safe: a view reads the simulation and can
+never write to it. `PanelViewSync` watches each panel's `Enabled` flag, and on a true-to-false
+edge spawns one quad per non-empty tile in that panel's rect — the tile's own colour, at its own
+position — then accelerates them downward, fades them, and destroys each one when it leaves the
+room. The simulation has no idea any of this happened; collision ended on the switch step.
+
+Debris animates on **render time**, not on the fixed step. That is allowed here and nowhere in
+`Sim/`: views already sample render time for interpolation (`StepInterpolator.AlphaOf`), and the
+determinism test cannot tell the difference because nothing reads back.
+
+Two details that will otherwise be found by hand:
+
+- **A restart must clear the debris.** `Clock.Step` running backwards is the signal — the same
+  one `StepInterpolator.Sync` already uses to know a room reset. Debris surviving into the
+  retry would be tiles falling through a floor that is back (GDD §8: the room resets, whole).
+- **Debris draws behind the player and the balloon.** It is scenery at that point, and the
+  balloon is always the highest-contrast thing on screen (GDD §13.1).
+
+A panel turning back **on** does not animate. The tiles are simply there again, and the drama of
+that moment is the crush, not a rising animation.
+
+### Leaving the room
+
+The player already dies 2 m outside the room in any direction — `SimWorld.StepPlayer` calls
+`Kill(DeathCause.PlayerFellOut)`, described in the code as a safety net "should be impossible in
+a walled level". Panels make it reachable on purpose, and it needs no change.
+
+**The balloon has no equivalent check, and that is a soft-lock.** Its death conditions are a
+hazard or `result.hitFloor`; with the floor masked away there is no floor to hit, so it falls
+forever and the level never ends. `StepBalloon` gains the same bounds test with the same 2 m
+margin, killing with a new `DeathCause.BalloonLeftRoom = 6`.
+
+Escaping upward counts too, and reads correctly: a balloon that gets away is the premise of the
+game losing, not a win.
+
+The margin is deliberately outside the room rather than at its edge — a bump can carry a body a
+little past the wall and back, and killing at the boundary would make the walls feel like
+hazards.
 
 ## The editor
 
@@ -208,9 +258,14 @@ ids are registered there.
 | `TileGridTests` (extended) | A masked cell reads Empty; out of bounds still reads Solid; painting under a mask edits the cell without revealing it; `Version` bumps |
 | `PanelCrushTests` | A panel switching on with the player inside kills both bodies in one step; switching on with the room clear kills nobody; a body that has left is safe |
 | `DeterminismTests` (extended) | A room whose floor is taken away by a `once: true` trigger, run twice, bit-identical, and identical again after a restart |
+| `BalloonBoundsTests` | A balloon below the room dies with `BalloonLeftRoom`; one above it dies too; one a metre outside a wall does not, so a bump past the edge is survivable |
 | `EditorPanelTests` | CRUD, `pNN` allocation after deletion, selection exclusivity, link wiring and the cascade on delete |
 | `LevelValidatorTests` (extended) | The three new warnings |
 | `LevelFormatTests` (extended) | `panels` round-trips, including a file with none |
+
+The falling debris has no automated cover — it is a view, like every other view in this
+project — so it is judged by watching it: whether the fall reads as the floor giving way rather
+than as a glitch, and whether the debris clears cleanly on a restart.
 
 What the tests cannot judge is whether a floor vanishing under the player reads as
 cruel-but-learnable or as unfair (GDD §8) — that is a playtest, and the first level built with
@@ -220,7 +275,8 @@ one should be played before the pattern is used more widely.
 
 - Crushers, closing doors and moving platforms: still deferred, and still genuinely blocked on
   moving-solid collision (GDD §22, 2026-08-24).
-- A crumble animation or shake. The link `delay` is the telegraph.
+- A crumble *warning* — the shake or flash before a floor goes. The tiles fall when they go,
+  but the telegraph that they are about to is authored from the link `delay`.
 - Per-tile panels — a panel is a rect. An author who wants a ragged edge uses several.
 - Panels as link *sources*. A panel has no condition to fire on; that is a trigger's job.
 
@@ -229,7 +285,8 @@ one should be played before the pattern is used more widely.
 - `docs/level-editor-spec.md` §3 — the `panels` array; §4 — Panel on `9` in the tool table;
   §7 — the three new lints.
 - `docs/balloon-game-gdd.md` §9.1 — that disappearing floors are built, and that crushers and
-  closing doors remain deferred for the reason §22 gives.
+  closing doors remain deferred for the reason §22 gives; §4.3 — that the balloon now dies on
+  leaving the room, not only on touching a floor.
 - The 2026-08-28 trigger spec's "Not in this pass" list — tile-rect toggling is no longer
   deferred, and the reason it was grouped with moving-solid collision was wrong.
 
