@@ -1,5 +1,6 @@
 using KeepyUppy.InputLayer;
 using KeepyUppy.Sim.Entities;
+using KeepyUppy.Sim.Panels;
 using KeepyUppy.Sim.Triggers;
 using UnityEngine;
 
@@ -55,6 +56,8 @@ namespace KeepyUppy.Sim.Level
             LoadZones(level, world.Air);
             LoadEntities(level, world.Entities, world.Air);
             world.Entities.Step(world.Clock.Step, world.Air);
+            LoadPanels(level, world.Panels);
+            world.Panels.Apply(world.Grid);
             LoadTriggers(level, world.Triggers);
         }
 
@@ -79,6 +82,35 @@ namespace KeepyUppy.Sim.Level
                     new Rect(r[0], r[1], r[2], r[3]),
                     new Vector2(zone.@params?.vx ?? 0f, zone.@params?.vy ?? 0f),
                     zone.start_state != "off"));
+            }
+        }
+
+        /// <summary>
+        /// Panels, in file order. A panel's rect is rounded to whole tiles: the mask indexes
+        /// cells, so half a tile is not a thing that can be hidden.
+        /// </summary>
+        static void LoadPanels(LevelData level, PanelField panels)
+        {
+            panels.Clear();
+            if (level.panels == null) return;
+
+            foreach (LevelPanel data in level.panels)
+            {
+                if (data == null) continue;
+
+                float[] r = data.rect;
+                if (r == null || r.Length < 4) continue;
+
+                bool on = data.start_state != "off";
+
+                panels.Add(new SimPanel
+                {
+                    Id = data.id,
+                    Rect = new RectInt(Mathf.RoundToInt(r[0]), Mathf.RoundToInt(r[1]),
+                                       Mathf.RoundToInt(r[2]), Mathf.RoundToInt(r[3])),
+                    Enabled = on,
+                    StartEnabled = on,
+                });
             }
         }
 

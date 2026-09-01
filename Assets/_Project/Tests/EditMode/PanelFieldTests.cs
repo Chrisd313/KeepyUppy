@@ -1,4 +1,5 @@
 using KeepyUppy.Sim;
+using KeepyUppy.Sim.Level;
 using KeepyUppy.Sim.Panels;
 using NUnit.Framework;
 using UnityEngine;
@@ -140,6 +141,69 @@ namespace KeepyUppy.SimTests
 
             Assert.IsFalse(panels.Dirty, "already on, setting on again is not a change");
             Assert.AreEqual(0, panels.TurnedOnThisStep.Count);
+        }
+
+        static LevelData LevelWithPanel(string startState)
+        {
+            var grid = new TileGrid();
+            grid.FillBorder();
+            grid.Fill(10, 4, 6, 1, TileKind.Solid);
+
+            return new LevelData
+            {
+                tiles = grid.ToRows(),
+                panels = new[]
+                {
+                    new LevelPanel { id = "p01", rect = new[] { 10f, 4f, 6f, 1f }, start_state = startState },
+                },
+            };
+        }
+
+        [Test]
+        public void APanelStartingOff_HidesItsTilesAtLoad()
+        {
+            var world = new SimWorld();
+            LevelLoader.Apply(LevelWithPanel("off"), world, out _, out _);
+
+            Assert.AreEqual(1, world.Panels.Count);
+            Assert.IsFalse(world.Panels[0].Enabled);
+            Assert.IsFalse(world.Panels[0].StartEnabled);
+            Assert.AreEqual(TileKind.Empty, world.Grid[12, 4], "an appearing platform starts hidden");
+        }
+
+        [Test]
+        public void APanelStartingOn_LeavesItsTilesAlone()
+        {
+            var world = new SimWorld();
+            LevelLoader.Apply(LevelWithPanel("on"), world, out _, out _);
+
+            Assert.IsTrue(world.Panels[0].Enabled);
+            Assert.AreEqual(TileKind.Solid, world.Grid[12, 4]);
+        }
+
+        [Test]
+        public void ReloadingALevel_DoesNotAccumulatePanels()
+        {
+            var world = new SimWorld();
+            LevelData level = LevelWithPanel("on");
+
+            LevelLoader.Apply(level, world, out _, out _);
+            LevelLoader.ApplyEntities(level, world);
+            LevelLoader.ApplyEntities(level, world);
+
+            Assert.AreEqual(1, world.Panels.Count, "the editor reloads on every edit");
+        }
+
+        [Test]
+        public void APanelRect_IsRoundedToWholeTiles()
+        {
+            var world = new SimWorld();
+            LevelData level = LevelWithPanel("on");
+            level.panels[0].rect = new[] { 9.6f, 4.4f, 6.2f, 1.1f };
+
+            LevelLoader.Apply(level, world, out _, out _);
+
+            Assert.AreEqual(new RectInt(10, 4, 6, 1), world.Panels[0].Rect);
         }
     }
 }

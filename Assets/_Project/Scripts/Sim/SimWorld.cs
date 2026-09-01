@@ -1,5 +1,6 @@
 using KeepyUppy.InputLayer;
 using KeepyUppy.Sim.Entities;
+using KeepyUppy.Sim.Panels;
 using KeepyUppy.Sim.Triggers;
 using UnityEngine;
 
@@ -25,6 +26,9 @@ namespace KeepyUppy.Sim
 
         /// <summary>Triggers and links (GDD 9.3). Stepped last; see Tick.</summary>
         public readonly TriggerField Triggers = new TriggerField();
+
+        /// <summary>Geometry a link can take away (GDD 9.3). Masks tiles; see PanelField.</summary>
+        public readonly PanelField Panels = new PanelField();
 
         /// <summary>The way out (GDD 3, 7.4). Absent in the physics-only test rooms.</summary>
         public ExitGate Exit = ExitGate.None;
