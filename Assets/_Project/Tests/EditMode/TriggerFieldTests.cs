@@ -21,7 +21,7 @@ namespace KeepyUppy.SimTests
 
         /// <summary>Steps the field with a player at a position and no balloon in the room.</summary>
         static void StepPlayer(TriggerField field, int step, Vector2 player)
-            => field.Step(step, player, true, new Vector2(-99f, -99f), null, null);
+            => field.Step(step, player, true, new Vector2(-99f, -99f), null, null, null);
 
         [Test]
         public void Region_FiresOnTheEntryEdge_NotEveryStepInside()
@@ -71,10 +71,10 @@ namespace KeepyUppy.SimTests
             var field = new TriggerField();
             field.Add(Region("t01", once: true, TriggerKind.BalloonRegion));
 
-            field.Step(0, new Vector2(12f, 2f), true, new Vector2(0f, 9f), null, null);
+            field.Step(0, new Vector2(12f, 2f), true, new Vector2(0f, 9f), null, null, null);
             Assert.AreEqual(0, field.FiredThisStep.Count, "the player is not the balloon");
 
-            field.Step(1, new Vector2(12f, 2f), true, new Vector2(12f, 2f), null, null);
+            field.Step(1, new Vector2(12f, 2f), true, new Vector2(12f, 2f), null, null, null);
             Assert.AreEqual(1, field.FiredThisStep.Count);
         }
 
@@ -85,7 +85,7 @@ namespace KeepyUppy.SimTests
             field.Add(Region("t01", once: true));
 
             for (int step = 0; step < 10; step++)
-                field.Step(step, new Vector2(12f, 2f), false, new Vector2(12f, 2f), null, null);
+                field.Step(step, new Vector2(12f, 2f), false, new Vector2(12f, 2f), null, null, null);
 
             Assert.AreEqual(0, field.FiredThisStep.Count);
         }
@@ -170,10 +170,10 @@ namespace KeepyUppy.SimTests
                 FromIndex = 0, ToIds = new[] { "e01" }, Action = LinkAction.On, DelaySteps = 0,
             });
 
-            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
             Assert.IsFalse(entities.Find("e01").Active, "effects land on the NEXT step");
 
-            field.Step(1, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(1, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
             Assert.IsTrue(entities.Find("e01").Active);
         }
 
@@ -189,13 +189,13 @@ namespace KeepyUppy.SimTests
                 FromIndex = 0, ToIds = new[] { "e01" }, Action = LinkAction.On, DelaySteps = 24,
             });
 
-            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
 
             // Fired on step 0, so it is queued for step 0 + 1 + 24 = 25. The +1 is the
             // "effects land on the next step" rule, not an off-by-one.
             for (int step = 1; step <= 26; step++)
             {
-                field.Step(step, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+                field.Step(step, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
                 bool expected = step >= 25;
                 Assert.AreEqual(expected, entities.Find("e01").Active, $"step {step}");
             }
@@ -213,13 +213,13 @@ namespace KeepyUppy.SimTests
                 FromIndex = 0, ToIds = new[] { "e01" }, Action = LinkAction.Toggle, DelaySteps = 0,
             });
 
-            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
-            field.Step(1, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
+            field.Step(1, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
             Assert.IsTrue(entities.Find("e01").Active, "first entry armed it");
 
-            field.Step(2, new Vector2(0f, 2f), true, Vector2.zero, entities, air);
-            field.Step(3, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
-            field.Step(4, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(2, new Vector2(0f, 2f), true, Vector2.zero, entities, air, null);
+            field.Step(3, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
+            field.Step(4, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
             Assert.IsFalse(entities.Find("e01").Active, "re-entry toggled it back off");
         }
 
@@ -236,8 +236,8 @@ namespace KeepyUppy.SimTests
                 FromIndex = 0, ToIds = new[] { "z01" }, Action = LinkAction.On, DelaySteps = 0,
             });
 
-            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, null, air);
-            field.Step(1, new Vector2(12f, 2f), true, Vector2.zero, null, air);
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, null, air, null);
+            field.Step(1, new Vector2(12f, 2f), true, Vector2.zero, null, air, null);
 
             Assert.IsTrue(air[0].enabled);
         }
@@ -255,7 +255,7 @@ namespace KeepyUppy.SimTests
             });
 
             for (int step = 0; step < 10; step++)
-                field.Step(step, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+                field.Step(step, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
 
             Assert.IsFalse(entities.Find("e01").Active, "arm and fire are parsed, not simulated");
         }
@@ -272,7 +272,7 @@ namespace KeepyUppy.SimTests
                 FromIndex = 0, ToIds = new[] { "e01" }, Action = LinkAction.On, DelaySteps = 30,
             });
 
-            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(0, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
             Assert.AreEqual(1, field.PendingCount, "queued but not yet due");
 
             field.Reset();
@@ -320,7 +320,7 @@ namespace KeepyUppy.SimTests
             for (int step = 0; step < 300; step++)
             {
                 entities.Step(step, air);
-                field.Step(step, new Vector2(0f, 2f), true, Vector2.zero, entities, air);
+                field.Step(step, new Vector2(0f, 2f), true, Vector2.zero, entities, air, null);
             }
 
             Assert.AreEqual(new Vector2(4f, 8f), entities.Find("saw").Position, "parked while dormant");
@@ -328,10 +328,10 @@ namespace KeepyUppy.SimTests
             // Step 300 fires the trigger. The link is queued for 301 and applied when that
             // step is drained, arming the saw for 302 — the first step it is placed on.
             entities.Step(300, air);
-            field.Step(300, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(300, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
 
             entities.Step(301, air);
-            field.Step(301, new Vector2(12f, 2f), true, Vector2.zero, entities, air);
+            field.Step(301, new Vector2(12f, 2f), true, Vector2.zero, entities, air, null);
 
             Assert.IsTrue(entities.Find("saw").Active, "the link should have armed it");
             Assert.AreEqual(302, entities.Find("saw").ArmedStep, "armed for the step it first moves on");

@@ -153,6 +153,8 @@ namespace KeepyUppy.Sim
             // link may have written (GDD 9.3). Triggers first, so nothing re-applies while
             // the entities and zones are being put back.
             Triggers.Reset();
+            Panels.Reset();
+            Panels.Apply(Grid);
             Air.ResetStates();
             Entities.Reset();
             Entities.Step(0, Air);
@@ -248,7 +250,13 @@ namespace KeepyUppy.Sim
             // movement must not materialise inside the body that armed it in the frame it
             // armed it — that is a death with no frame in which it was avoidable (GDD 8).
             // Effects therefore land on the next step; delay 0 means next step, not this one.
-            Triggers.Step(step, Player.Position, HasPlayer, Balloon.Position, Entities, Air);
+            Panels.BeginStep();
+            Triggers.Step(step, Player.Position, HasPlayer, Balloon.Position, Entities, Air, Panels);
+
+            // The mask is rebuilt before the crush check, so a body is tested against tiles
+            // that are actually back rather than against a flag.
+            if (Panels.Dirty) Panels.Apply(Grid);
+            CrushBodiesInReturningPanels();
 
             Clock.Advance();
         }
@@ -285,6 +293,57 @@ namespace KeepyUppy.Sim
             // is a duration, not an index: a later screen divides it by SimClock.Hz to render
             // a time, and an off-by-one there is a permanently wrong record.
             WinningFrames = Clock.Step + 1;
+        }
+
+        /// <summary>
+        /// A body caught inside tiles that just came back dies (tile-panels design).
+        ///
+        /// Only the panels that switched this step are tested, and only their cells that
+        /// actually hold a tile — a panel whose rect covers empty space crushes nothing. The
+        /// GDD 8 fairness shrink is deliberately NOT applied: the hazard is the tile arriving,
+        /// not a hitbox the player was asked to read, and an inset would let a body sit
+        /// visibly inside solid geometry and live.
+        ///
+        /// Public rather than private so the crush tests can drive it without a trigger; the
+        /// test assembly is separate, so internal would cost an InternalsVisibleTo attribute.
+        /// </summary>
+        public void CrushBodiesInReturningPanels()
+        {
+            if (IsDead) return;
+
+            for (int i = 0; i < Panels.TurnedOnThisStep.Count; i++)
+            {
+                RectInt rect = Panels[Panels.TurnedOnThisStep[i]].Rect;
+
+                for (int y = rect.yMin; y < rect.yMax; y++)
+                for (int x = rect.xMin; x < rect.xMax; x++)
+                {
+                    if (!TileGrid.InBounds(x, y) || Grid[x, y] == TileKind.Empty) continue;
+
+                    if (HasPlayer && BoxOverlapsTile(Player.Position, Player.HalfWidth, Player.HalfHeight, x, y))
+                    {
+                        Kill(DeathCause.Crushed);
+                        return;
+                    }
+
+                    if (CircleOverlapsTile(Balloon.Position, Balloon.Radius, x, y))
+                    {
+                        Kill(DeathCause.Crushed);
+                        return;
+                    }
+                }
+            }
+        }
+
+        static bool BoxOverlapsTile(Vector2 centre, float halfWidth, float halfHeight, int x, int y)
+            => centre.x + halfWidth > x && centre.x - halfWidth < x + 1 &&
+               centre.y + halfHeight > y && centre.y - halfHeight < y + 1;
+
+        static bool CircleOverlapsTile(Vector2 centre, float radius, int x, int y)
+        {
+            float dx = centre.x - Mathf.Clamp(centre.x, x, x + 1);
+            float dy = centre.y - Mathf.Clamp(centre.y, y, y + 1);
+            return dx * dx + dy * dy < radius * radius;
         }
 
         void StepPlayer()

@@ -2,6 +2,7 @@ using System;
 using KeepyUppy.InputLayer;
 using KeepyUppy.Sim;
 using KeepyUppy.Sim.Entities;
+using KeepyUppy.Sim.Panels;
 using KeepyUppy.Sim.Triggers;
 using NUnit.Framework;
 using UnityEngine;
@@ -67,7 +68,7 @@ namespace KeepyUppy.SimTests
             entityPositions = FoldPositions(w.Entities),
             entityExposure = FoldExposure(w.Entities),
             triggerState = FoldTriggers(w.Triggers),
-            activeStates = FoldActive(w.Entities, w.Air),
+            activeStates = FoldActive(w.Entities, w.Air, w.Panels),
         };
 
         static int FoldPositions(EntityField entities)
@@ -112,7 +113,7 @@ namespace KeepyUppy.SimTests
             }
         }
 
-        static int FoldActive(EntityField entities, AirField air)
+        static int FoldActive(EntityField entities, AirField air, PanelField panels)
         {
             unchecked
             {
@@ -125,6 +126,9 @@ namespace KeepyUppy.SimTests
 
                 for (int i = 0; i < air.Count; i++)
                     hash = (hash ^ (air[i].enabled ? 1 : 0)) * 16777619;
+
+                for (int i = 0; i < panels.Count; i++)
+                    hash = (hash ^ (panels[i].Enabled ? 1 : 0)) * 16777619;
 
                 return hash;
             }
