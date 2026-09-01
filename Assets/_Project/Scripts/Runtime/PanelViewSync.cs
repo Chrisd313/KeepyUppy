@@ -27,7 +27,19 @@ namespace KeepyUppy.Runtime
         }
 
         readonly List<Debris> _debris = new List<Debris>();
-        readonly List<bool> _wasEnabled = new List<bool>();
+
+        /// <summary>
+        /// Whether each cell was masked as of last frame. Sized and indexed the same way as
+        /// TileGrid itself. The edge lives here, per cell, rather than per panel: with
+        /// overlapping panels, asking "which panel hid this cell" has to reason about what
+        /// every other panel did and when, and that reasoning has been wrong three times in a
+        /// row. A cell that went visible-to-hidden between two frames is exactly the definition
+        /// of a tile that just fell, whatever combination of panels caused it — no other panel
+        /// needs to be consulted.
+        /// </summary>
+        readonly bool[] _wasMasked = new bool[TileGrid.Width * TileGrid.Height];
+        bool _seeded;
+
         int _lastStep;
 
         /// <summary>Metres per second squared. The player's own gravity, so it looks of a piece.</summary>
@@ -38,14 +50,16 @@ namespace KeepyUppy.Runtime
             if (World == null) return;
 
             WatchForRestart();
-            WatchPanels();
+            WatchMask();
             FallAndFade();
         }
 
         /// <summary>
         /// A restart clears the debris. Clock.Step running backwards is the signal, the same
         /// one StepInterpolator uses — tiles still falling through a floor that is back would
-        /// be the room half-reset (GDD 8).
+        /// be the room half-reset (GDD 8). The mask snapshot is reseeded in the same breath, so
+        /// the tiles a restart puts back do not read as a fresh visible-to-hidden edge next
+        /// frame.
         /// </summary>
         void WatchForRestart()
         {
@@ -55,79 +69,50 @@ namespace KeepyUppy.Runtime
             {
                 foreach (Debris d in _debris) if (d.view != null) Destroy(d.view);
                 _debris.Clear();
+                _seeded = false;
             }
 
             _lastStep = step;
         }
 
-        void WatchPanels()
-        {
-            // Rebuild rather than only grow: LoadPanels (the editor's live resync) clears and
-            // re-Adds every panel, so a count change can also mean an index shifted under an
-            // existing entry. A fresh count is the one cheap, always-correct signal for that;
-            // seeding from the live flags — not a literal true — is what stops a panel authored
-            // start_state:"off" from firing a false edge on the very first frame it's seen.
-            if (_wasEnabled.Count != World.Panels.Count)
-            {
-                _wasEnabled.Clear();
-                for (int i = 0; i < World.Panels.Count; i++) _wasEnabled.Add(World.Panels[i].Enabled);
-            }
-
-            for (int i = 0; i < World.Panels.Count; i++)
-            {
-                bool enabled = World.Panels[i].Enabled;
-
-                // The true-to-false edge is the moment the floor gives way.
-                if (_wasEnabled[i] && !enabled) Spawn(i);
-
-                _wasEnabled[i] = enabled;
-            }
-        }
-
         /// <summary>
-        /// One quad per tile the panel just hid. Read from the level's rows rather than the
-        /// live grid: the mask is already applied by the time this runs, so the live grid
-        /// reports Empty for exactly the tiles we want to draw falling.
+        /// One pass over the whole room per frame. A cell that is masked now but was not last
+        /// frame just fell, whatever caused it — a single panel, two overlapping panels
+        /// switching off on the same step, or a panel that starts the level already off (the
+        /// first pass seeds from the live mask instead of comparing, so that case drops
+        /// nothing). 576 cells is nothing to scan once per render frame.
         /// </summary>
-        void Spawn(int panelIndex)
+        void WatchMask()
         {
-            RectInt rect = World.Panels[panelIndex].Rect;
-
-            for (int y = rect.yMin; y < rect.yMax; y++)
-            for (int x = rect.xMin; x < rect.xMax; x++)
+            for (int y = 0; y < TileGrid.Height; y++)
+            for (int x = 0; x < TileGrid.Width; x++)
             {
-                if (!TileGrid.InBounds(x, y)) continue;
-                if (!World.Grid.IsMasked(x, y)) continue;
+                int i = y * TileGrid.Width + x;
+                bool masked = World.Grid.IsMasked(x, y);
 
-                // IsMasked is true if ANY covering panel is off, so with two overlapping panels
-                // a cell already hidden by another disabled panel is not leaving anything when
-                // this one switches off too — skip it, or it falls a second time.
-                if (HiddenByAnotherPanel(x, y, panelIndex)) continue;
-
-                TileKind kind = World.Grid.BaseAt(x, y);
-                if (kind == TileKind.Empty) continue;
-
-                Color colour = kind == TileKind.Solid ? SimPalette.Solid : SimPalette.Hazard;
-
-                _debris.Add(new Debris
+                if (_seeded && masked && !_wasMasked[i])
                 {
-                    view = QuadView.Create(transform, $"debris_{x}_{y}", colour,
-                                           new Vector2(x + 0.5f, y + 0.5f), Vector2.one, -0.1f),
-                    velocity = 0f,
-                });
+                    TileKind kind = World.Grid.BaseAt(x, y);
+                    if (kind != TileKind.Empty) Spawn(x, y, kind);
+                }
+
+                _wasMasked[i] = masked;
             }
+
+            _seeded = true;
         }
 
-        bool HiddenByAnotherPanel(int x, int y, int panelIndex)
+        /// <summary>One debris quad for a tile a panel just hid.</summary>
+        void Spawn(int x, int y, TileKind kind)
         {
-            for (int i = 0; i < World.Panels.Count; i++)
-            {
-                if (i == panelIndex) continue;
-                if (World.Panels[i].Enabled) continue;
-                if (World.Panels[i].Rect.Contains(new Vector2Int(x, y))) return true;
-            }
+            Color colour = kind == TileKind.Solid ? SimPalette.Solid : SimPalette.Hazard;
 
-            return false;
+            _debris.Add(new Debris
+            {
+                view = QuadView.Create(transform, $"debris_{x}_{y}", colour,
+                                       new Vector2(x + 0.5f, y + 0.5f), Vector2.one, -0.1f),
+                velocity = 0f,
+            });
         }
 
         void FallAndFade()
