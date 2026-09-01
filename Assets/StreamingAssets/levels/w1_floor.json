@@ -51,7 +51,7 @@
             "rect": [
                 16.0,
                 0.0,
-                4.0,
+                3.0,
                 1.0
             ],
             "start_state": "on"
@@ -64,7 +64,7 @@
                 "p01"
             ],
             "action": "off",
-            "delay": 0.15
+            "delay": 0.1
         }
     ],
     "triggers": [
@@ -72,9 +72,9 @@
             "id": "t01",
             "type": "player_region",
             "rect": [
-                8.0,
+                14.0,
                 0.0,
-                8.0,
+                2.0,
                 18.0
             ],
             "once": true,
@@ -84,7 +84,7 @@
     ],
     "meta": {
         "par_touches": 5,
-        "author_note": "Draft: the floor at x=16-20 is a panel, armed off by a once player_region trigger covering the approach at x=8-16, 0.15s delay. Cross before it drops or fall out the open bottom. Not in index.json on purpose.",
+        "author_note": "Draft: the floor at x=16-19 is a 3-tile panel that gives way underfoot. Trigger t01 is the last two tiles of solid floor before the gap (x=14-16), armed once, with a 0.1s beat before p01 drops off. Commit to the jump; the far floor at x=19+ is solid. Not in index.json on purpose.",
         "tuning_profile": "default"
     }
 }
