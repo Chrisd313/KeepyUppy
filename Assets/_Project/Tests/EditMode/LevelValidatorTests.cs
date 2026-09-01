@@ -44,6 +44,33 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void AnExitWalledInWithRubber_Warns()
+        {
+            // Rubber blocks the balloon exactly as Solid does, so an exit buried in it is
+            // just as unreachable. The lint has to ask "does this stop the balloon", not
+            // "is this the Solid kind".
+            LevelData level = Valid();
+            var grid = new TileGrid();
+            grid.FillBorder();
+            grid.Fill(28, 3, 3, 3, TileKind.Rubber);
+            level.tiles = grid.ToRows();
+
+            AssertWarns(level, "exit is inside solid geometry");
+        }
+
+        [Test]
+        public void ABalloonSpawnedInsideRubber_Warns()
+        {
+            LevelData level = Valid();
+            var grid = new TileGrid();
+            grid.FillBorder();
+            grid.Fill(5, 12, 3, 3, TileKind.Rubber);
+            level.tiles = grid.ToRows();
+
+            AssertWarns(level, "balloon spawn overlaps solid geometry");
+        }
+
+        [Test]
         public void MissingSpawns_Warn()
         {
             LevelData level = Valid();

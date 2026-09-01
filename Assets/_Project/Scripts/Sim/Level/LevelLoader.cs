@@ -19,6 +19,12 @@ namespace KeepyUppy.Sim.Level
         /// Applies geometry and zones, and returns the spawns. Does not call Configure —
         /// the caller owns the input source and the seed.
         /// </summary>
+        /// <summary>Where a level that declares no spawn block puts the balloon.</summary>
+        public static readonly Vector2 DefaultBalloonSpawn = new Vector2(6f, 13f);
+
+        /// <summary>Where a level that declares no spawn block puts the player.</summary>
+        public static readonly Vector2 DefaultPlayerSpawn = new Vector2(4f, 2f);
+
         public static void Apply(LevelData level, SimWorld world,
                                  out Vector2 balloonSpawn, out Vector2 playerSpawn)
         {
@@ -26,8 +32,8 @@ namespace KeepyUppy.Sim.Level
 
             ApplyEntities(level, world);
 
-            balloonSpawn = ToVector(level.spawn?.balloon, new Vector2(6f, 13f));
-            playerSpawn = ToVector(level.spawn?.player, new Vector2(4f, 2f));
+            balloonSpawn = ToVector(level.spawn?.balloon, DefaultBalloonSpawn);
+            playerSpawn = ToVector(level.spawn?.player, DefaultPlayerSpawn);
 
             world.Balloon.Radius = InflationBands.RadiusOf(ParseBand(level.spawn?.balloon_inflation));
             world.Exit = ToGate(level.exit);

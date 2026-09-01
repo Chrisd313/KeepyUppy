@@ -96,6 +96,7 @@ One JSON file per level, human-readable, one file per level, committed to git. T
   // Static geometry. Run-length encoded rows, one string per row.
   // Chars: '.' empty  '#' solid  '=' oneway  '~' rough(pops)  '^' spike-up
   //        'v' spike-down  '<' '>' spike-side  'x' player-lethal only
+  //        'o' rubber — bounces the balloon at a fixed speed, never ends the run
   "tiles": [
     "................................",
     "###...........................##"
@@ -272,7 +273,7 @@ Immediate-mode / debug UI only (Unity IMGUI, Godot Control nodes, or Dear ImGui)
 |---|---|---|
 | Paint | `1` | Click-drag paints selected tile. Right-drag erases. |
 | Rect fill | `2` | Drag a rectangle of the selected tile. |
-| Select/move | `3` | Click entity to select. Drag to move. Shift-click multi-select. |
+| Select/move | `3` | Click entity to select. Drag to move. Shift-click multi-select. Also picks up the **player and balloon spawns** and the exit — tested in that order, since the gate is large enough to swallow a marker sitting in the doorway. A dragged spawn moves the frozen body with it, so the body is the marker; coordinates are typable in the inspector. A level with no `spawn` block still shows both markers, at the loader's own defaults. |
 | Zone | `4` | Drag empty space to create, drag a zone to move, drag a corner handle to resize. `N` toggles a forced create so an overlapping zone can be drawn. `Delete` or right-click removes one. Type, rect, `params` and `start_state` in the inspector. |
 | Path | `5` | With an entity selected, click to append waypoints. Drag a handle to move one, right-click to delete. Handle 0 is the entity and moves the whole trap. |
 | Link | `6` | Click a trigger then a target to wire it, right-click an arrow to unwire it. Targets append to one link per source. |

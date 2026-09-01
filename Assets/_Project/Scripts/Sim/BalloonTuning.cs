@@ -32,6 +32,8 @@ namespace KeepyUppy.Sim
         public float restitutionPlayerPassive;
 
         /// <summary>Below this normal speed there is no bounce at all. Kills contact jitter.</summary>
+        public float rubberLaunchSpeed;
+
         public float minBounceSpeed;
 
         /// <summary>Hard speed ceiling. Also the tunnelling guard the sweep is sized against.</summary>
@@ -116,6 +118,7 @@ namespace KeepyUppy.Sim
             restitutionWall = 0.75f,
             restitutionPlayerPassive = 0.5f,
             minBounceSpeed = 0.3f,
+            rubberLaunchSpeed = 12f,
             maxSpeed = 24f,
 
             bumpVelocity = 20.0f,

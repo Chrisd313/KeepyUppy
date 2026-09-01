@@ -68,6 +68,30 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         public bool ExitSelected;
 
+        /// <summary>
+        /// Which spawn the Select tool is holding. The spawns ride that tool rather than
+        /// take one of their own: two points do not earn a mode, and picking, half-tile snap,
+        /// nudge and undo are all already built there.
+        /// </summary>
+        public SpawnMarker SelectedSpawn;
+
+        /// <summary>
+        /// Drops every selection. The kinds are mutually exclusive because more than the
+        /// inspector reads them - the Delete key tests each independently, so two live
+        /// selections is one keypress destroying two objects. Every setter clears through
+        /// here rather than listing its five siblings, which is what stops the sixth kind
+        /// from being the one somebody forgets.
+        /// </summary>
+        void ClearSelection()
+        {
+            SelectedEntityId = null;
+            SelectedZoneId = null;
+            SelectedTriggerId = null;
+            SelectedPanelId = null;
+            SelectedSpawn = SpawnMarker.None;
+            ExitSelected = false;
+        }
+
         /// <summary>Unsaved changes exist. Shown in the status bar; never blocks anything.</summary>
         public bool Dirty { get; private set; }
 
@@ -188,10 +212,7 @@ namespace KeepyUppy.LevelEditing
             Level = level ?? new LevelData();
             Grid.LoadRows(Level.tiles ?? new string[0]);
             Undo.Clear();
-            SelectedEntityId = null;
-            SelectedTriggerId = null;
-            SelectedPanelId = null;
-            ExitSelected = false;
+            ClearSelection();
             Dirty = false;
         }
 
@@ -417,11 +438,8 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         public void SelectZone(string id)
         {
+            ClearSelection();
             SelectedZoneId = id;
-            SelectedEntityId = null;
-            SelectedTriggerId = null;
-            SelectedPanelId = null;
-            ExitSelected = false;
         }
 
         /// <summary>
@@ -433,11 +451,8 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         public void SelectEntity(string id)
         {
+            ClearSelection();
             SelectedEntityId = id;
-            SelectedZoneId = null;
-            SelectedTriggerId = null;
-            SelectedPanelId = null;
-            ExitSelected = false;
         }
 
         /// <summary>
@@ -589,11 +604,8 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         public void SelectTrigger(string id)
         {
+            ClearSelection();
             SelectedTriggerId = id;
-            SelectedEntityId = null;
-            SelectedZoneId = null;
-            SelectedPanelId = null;
-            ExitSelected = false;
         }
 
         public void SetTriggerRect(string id, Rect rect)
@@ -743,11 +755,8 @@ namespace KeepyUppy.LevelEditing
         /// </summary>
         public void SelectPanel(string id)
         {
+            ClearSelection();
             SelectedPanelId = id;
-            SelectedEntityId = null;
-            SelectedZoneId = null;
-            SelectedTriggerId = null;
-            ExitSelected = false;
         }
 
         public void SetPanelRect(string id, Rect rect)
@@ -1003,6 +1012,80 @@ namespace KeepyUppy.LevelEditing
             return Vector2.Distance(p, a + ab * t);
         }
 
+        // ------------------------------------------------------------------ spawns
+
+        /// <summary>Where a marker currently sits, falling back exactly as the loader does.</summary>
+        public Vector2 SpawnPos(SpawnMarker marker)
+        {
+            float[] pair = marker == SpawnMarker.Balloon ? Level.spawn?.balloon : Level.spawn?.player;
+            Vector2 fallback = marker == SpawnMarker.Balloon
+                ? LevelLoader.DefaultBalloonSpawn
+                : LevelLoader.DefaultPlayerSpawn;
+
+            return pair != null && pair.Length >= 2 ? new Vector2(pair[0], pair[1]) : fallback;
+        }
+
+        /// <summary>
+        /// Which spawn a click lands on, nearest first. A level with no spawn block still
+        /// answers: the loader will put bodies at its own defaults, so those are where the
+        /// author has to be able to grab them.
+        /// </summary>
+        public SpawnMarker SpawnAt(Vector2 world, float radius = 0.5f)
+        {
+            var best = SpawnMarker.None;
+            float bestDistance = radius;
+
+            foreach (SpawnMarker marker in new[] { SpawnMarker.Player, SpawnMarker.Balloon })
+            {
+                float distance = Vector2.Distance(world, SpawnPos(marker));
+                if (distance > bestDistance) continue;
+
+                best = marker;
+                bestDistance = distance;
+            }
+
+            return best;
+        }
+
+        public void SelectSpawn(SpawnMarker marker)
+        {
+            ClearSelection();
+            SelectedSpawn = marker;
+        }
+
+        /// <summary>
+        /// Half-tile snap, like every other point the Select tool moves.
+        ///
+        /// Writing one spawn materialises the block with the other at the loader's default,
+        /// so an author who drags the balloon somewhere never silently pins the player to a
+        /// position they were never shown.
+        /// </summary>
+        public void MoveSpawn(SpawnMarker marker, Vector2 world)
+        {
+            if (marker == SpawnMarker.None) return;
+
+            Vector2 other = SpawnPos(marker == SpawnMarker.Balloon
+                ? SpawnMarker.Player
+                : SpawnMarker.Balloon);
+
+            if (Level.spawn == null) Level.spawn = new LevelSpawn();
+
+            Vector2 snapped = GridCursor.SnapHalfTile(world);
+
+            if (marker == SpawnMarker.Balloon)
+            {
+                Level.spawn.balloon = new[] { snapped.x, snapped.y };
+                Level.spawn.player = new[] { other.x, other.y };
+            }
+            else
+            {
+                Level.spawn.player = new[] { snapped.x, snapped.y };
+                Level.spawn.balloon = new[] { other.x, other.y };
+            }
+
+            Dirty = true;
+        }
+
         // -------------------------------------------------------------------- exit
 
         /// <summary>The gate as the sim sees it, so the editor and the game agree on it.</summary>
@@ -1022,11 +1105,8 @@ namespace KeepyUppy.LevelEditing
 
         public void SelectExit()
         {
+            ClearSelection();
             ExitSelected = true;
-            SelectedEntityId = null;
-            SelectedZoneId = null;
-            SelectedTriggerId = null;
-            SelectedPanelId = null;
         }
 
         public void MoveExit(Vector2 world)

@@ -1,3 +1,4 @@
+using KeepyUppy.Sim;
 using UnityEngine;
 
 namespace KeepyUppy.Runtime
@@ -27,7 +28,29 @@ namespace KeepyUppy.Runtime
         /// <summary>Not reserved. Deliberately quieter than the balloon.</summary>
         public static readonly Color Player     = new Color32(0x7F, 0x8C, 0xA8, 0xFF);
 
+        /// <summary>
+        /// Rubber. Not reserved, but deliberately far from Hazard: a tile the balloon is
+        /// meant to land on must not read as one that kills it, and "geometry that behaves
+        /// differently" has to look different to be learnable at all.
+        /// </summary>
+        public static readonly Color Rubber     = new Color32(0x8A, 0x5C, 0xD8, 0xFF);
+
         /// <summary>UI text. Not a reserved colour — deliberately not the balloon's.</summary>
+        /// <summary>
+        /// The colour of one static tile. The single home for this decision - the tile view
+        /// and the panel-debris view both draw geometry and must never disagree about what
+        /// a kind looks like.
+        /// </summary>
+        public static Color ForTile(TileKind kind)
+        {
+            switch (kind)
+            {
+                case TileKind.Solid:  return Solid;
+                case TileKind.Rubber: return Rubber;
+                default:              return Hazard;
+            }
+        }
+
         public static readonly Color Text    = new Color32(0xF2, 0xF2, 0xF2, 0xFF);
         public static readonly Color TextDim = new Color32(0x7F, 0x8C, 0xA8, 0xFF);
     }

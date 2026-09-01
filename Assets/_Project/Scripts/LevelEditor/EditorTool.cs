@@ -44,6 +44,14 @@ namespace KeepyUppy.LevelEditing
         Panel = 9,
     }
 
+    /// <summary>Which spawn marker the Select tool is holding, if any.</summary>
+    public enum SpawnMarker
+    {
+        None = 0,
+        Player = 1,
+        Balloon = 2,
+    }
+
     public enum EditorMode
     {
         Edit = 0,
