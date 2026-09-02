@@ -11,9 +11,8 @@ namespace KeepyUppy.Sim
     /// GDD 8 fairness: every hazard's pop hitbox is noticeably *smaller* than its visual.
     /// The shrink is applied here and nowhere else, so the rule cannot be half-applied.
     ///
-    /// Spikes are lethal on their pointed face only. The flat back of a spike is ordinary
-    /// geometry — you can stand on the tile beside a floor spike, and a wall spike does not
-    /// kill something sliding down the wall behind it.
+    /// Spikes are lethal on every face. Direction chooses which way the sprite points and
+    /// nothing else — a spike kills whatever touches it, from whichever side it arrives.
     /// </summary>
     public static class Hazards
     {
@@ -21,11 +20,11 @@ namespace KeepyUppy.Sim
         const float MinExtent = 0.02f;
 
         /// <summary>
-        /// How far a spike's kill volume protrudes past the tile face it points out of.
+        /// How far a spike's kill volume protrudes past its own tile, on every face.
         /// A body that a spike blocks — the player — is held a skin's width off the surface,
         /// so without this the kill volume it is standing on could never touch it.
         /// </summary>
-        const float PointBleed = 0.05f;
+        const float SurfaceBleed = 0.05f;
 
         public static bool KillsBalloon(TileKind kind)
             => kind == TileKind.Rough || TileGrid.IsSpike(kind);
@@ -86,8 +85,14 @@ namespace KeepyUppy.Sim
         }
 
         /// <summary>
-        /// The lethal volume of one tile: for a spike, the half of the tile its point is on;
-        /// for anything else, the whole tile. Inset on every free side by the fairness shrink.
+        /// The lethal volume of one tile. The whole tile either way — a spike bleeds out of
+        /// every face, anything else is inset by the fairness shrink.
+        ///
+        /// The shrink does not apply to spikes at all. It cannot: the same bleed that lets a
+        /// spike reach a player standing on it has to reach one pressed against its side, and
+        /// insetting the other two faces is what made those sides safe. GDD 8 still holds for
+        /// the balloon, which is shrunk by hazard_pop_radius_shrink at the caller — a margin
+        /// three times the bleed, so the pop volume stays smaller than the visual.
         /// </summary>
         public static void KillBox(TileKind kind, int tx, int ty, float shrink,
                                    out float bx0, out float by0, out float bx1, out float by1)
@@ -99,25 +104,12 @@ namespace KeepyUppy.Sim
             bx1 = tx + 1f - s;
             by1 = ty + 1f - s;
 
-            // Half the tile, on the side the point is on, protruding slightly past the face.
-            switch (kind)
+            if (TileGrid.IsSpike(kind))
             {
-                case TileKind.SpikeUp:
-                    by0 = ty + 0.5f;
-                    by1 = ty + 1f + PointBleed;
-                    break;
-                case TileKind.SpikeDown:
-                    by0 = ty - PointBleed;
-                    by1 = ty + 0.5f;
-                    break;
-                case TileKind.SpikeLeft:
-                    bx0 = tx - PointBleed;
-                    bx1 = tx + 0.5f;
-                    break;
-                case TileKind.SpikeRight:
-                    bx0 = tx + 0.5f;
-                    bx1 = tx + 1f + PointBleed;
-                    break;
+                bx0 = tx - SurfaceBleed;
+                by0 = ty - SurfaceBleed;
+                bx1 = tx + 1f + SurfaceBleed;
+                by1 = ty + 1f + SurfaceBleed;
             }
 
             if (bx1 - bx0 < MinExtent)
