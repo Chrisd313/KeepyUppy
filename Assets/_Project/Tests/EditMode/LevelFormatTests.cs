@@ -189,6 +189,7 @@ namespace KeepyUppy.SimTests
                 new LevelPanel
                 {
                     id = "p02", rect = new[] { 20f, 9f, 3f, 1f }, start_state = "off", exit_dir = "up",
+                    path = new[] { 0f, 0f, 0f, 3f }, path_mode = "pingpong", speed = 6f, hold = 0.5f,
                 },
             };
 
@@ -201,6 +202,11 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual("off", loaded.panels[1].start_state);
             Assert.AreEqual("down", loaded.panels[0].exit_dir, "the default is written, not left blank");
             Assert.AreEqual("up", loaded.panels[1].exit_dir);
+            Assert.AreEqual(new[] { 0f, 0f, 0f, 3f }, loaded.panels[1].path);
+            Assert.AreEqual("pingpong", loaded.panels[1].path_mode);
+            Assert.AreEqual(6f, loaded.panels[1].speed, 1e-4f);
+            Assert.AreEqual(0.5f, loaded.panels[1].hold, 1e-4f);
+            Assert.AreEqual(0, loaded.panels[0].path.Length, "a pathless panel round-trips as one");
         }
 
         [Test]

@@ -141,6 +141,28 @@ namespace KeepyUppy.Sim.Level
         /// existed did.
         /// </summary>
         public string exit_dir = "down";
+
+        /// <summary>
+        /// Waypoints as a FLAT list of x,y pairs of tile OFFSETS from <see cref="rect"/>:
+        /// [0,3, 0,0] is "up three, then home". Offsets rather than absolute positions so
+        /// moving the panel in the editor cannot invalidate its path.
+        ///
+        /// A panel with fewer than two waypoints is the mask panel that has always existed.
+        /// Flattened because JsonUtility cannot serialise nested arrays (see LevelEntity.path).
+        /// </summary>
+        public float[] path = new float[0];
+
+        /// <summary>pingpong | loop | once</summary>
+        public string path_mode = "once";
+
+        /// <summary>Tiles per second along the path.</summary>
+        public float speed;
+
+        /// <summary>Seconds paused at EVERY waypoint, both ends included.</summary>
+        public float hold;
+
+        /// <summary>0..1 offset so two identical panels can be desynced, as an entity's is.</summary>
+        public float phase;
     }
 
     [Serializable]

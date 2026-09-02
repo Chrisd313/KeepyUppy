@@ -80,7 +80,7 @@ namespace KeepyUppy.Sim.Panels
         /// <summary>GDD 8: part of the synchronous restart.</summary>
         public void Reset()
         {
-            for (int i = 0; i < _panels.Count; i++) _panels[i].Enabled = _panels[i].StartEnabled;
+            for (int i = 0; i < _panels.Count; i++) _panels[i].Reset();
 
             TurnedOnThisStep.Clear();
             Dirty = true;

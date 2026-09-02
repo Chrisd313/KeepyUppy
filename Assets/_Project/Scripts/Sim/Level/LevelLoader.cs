@@ -117,8 +117,29 @@ namespace KeepyUppy.Sim.Level
                     ExitDir = PanelDirections.Parse(data.exit_dir),
                     Enabled = on,
                     StartEnabled = on,
+                    Points = PanelPoints(data.path),
+                    Mode = EntityFactory.ParseMode(data.path_mode),
+                    Speed = data.speed,
+                    HoldSteps = SimClock.StepsIn(data.hold),
+                    Phase = data.phase,
                 });
             }
+        }
+
+        /// <summary>
+        /// A panel's waypoints. Unlike an entity's, the first pair IS the panel's own zero —
+        /// its path is offsets from its authored rect, so EntityPath.FromFlat's implicit
+        /// origin would duplicate waypoint 0.
+        /// </summary>
+        static Vector2[] PanelPoints(float[] flat)
+        {
+            if (flat == null || flat.Length < 2) return new[] { Vector2.zero };
+
+            var points = new Vector2[flat.Length / 2];
+            for (int i = 0; i < points.Length; i++)
+                points[i] = new Vector2(flat[i * 2], flat[i * 2 + 1]);
+
+            return points;
         }
 
         /// <summary>
