@@ -238,6 +238,12 @@ namespace KeepyUppy.Sim
             Panels.Advance(step);
             Solids.Rebuild(Panels);
 
+            // What that motion did to a body is resolved before that body gets a step of its
+            // own, so nothing is left standing inside geometry that arrived this step.
+            ResolveMovingPanels();
+
+            if (IsDead) { Clock.Advance(); return; }
+
             // Hazards move before either body does, so a saw and the balloon it catches are
             // contemporaries rather than a frame apart.
             Entities.Step(step, Air);
@@ -343,6 +349,122 @@ namespace KeepyUppy.Sim
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Displaces bodies that a moving panel has moved into, and kills the ones it cannot
+        /// place clear (moving-panels design).
+        ///
+        /// Runs after the panels are placed and before either body steps, so a body is never
+        /// left inside geometry that arrived in the same step — the same rule that puts
+        /// trigger effects on the following step.
+        ///
+        /// The shove moves position only. Letting a panel write velocity into the player
+        /// turns every push into a launch, and makes the outcome depend on how long contact
+        /// happened to last.
+        ///
+        /// The GDD 8 fairness shrink is deliberately NOT applied, exactly as it is not in
+        /// CrushBodiesInReturningPanels: the hazard is the panel arriving, not a hitbox the
+        /// player was asked to read.
+        ///
+        /// Public so the tests can drive it without a trigger, as CrushBodiesInReturningPanels is.
+        /// </summary>
+        public void ResolveMovingPanels()
+        {
+            if (IsDead) return;
+
+            for (int i = 0; i < Solids.Count; i++)
+            {
+                MovingSolid solid = Solids[i];
+                if (solid.velocity.sqrMagnitude <= 0f) continue;
+
+                if (HasPlayer && ShoveBox(solid, ref Player.Position,
+                                          Player.HalfWidth, Player.HalfHeight))
+                {
+                    Kill(DeathCause.Crushed);
+                    return;
+                }
+
+                if (ShoveCircle(solid, ref Balloon.Position, Balloon.Radius))
+                {
+                    Kill(DeathCause.Crushed);
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Pushes a box clear along the panel's motion axis. True if it cannot be placed —
+        /// static geometry behind it — which is a crush.
+        /// </summary>
+        bool ShoveBox(in MovingSolid solid, ref Vector2 centre, float hx, float hy)
+        {
+            if (!Overlaps(solid.rect, centre, hx, hy)) return false;
+
+            Vector2 pushed = PushOut(solid, centre, hx, hy);
+            if (BoxHitsGeometry(pushed, hx, hy)) return true;
+
+            centre = pushed;
+            return false;
+        }
+
+        bool ShoveCircle(in MovingSolid solid, ref Vector2 centre, float radius)
+        {
+            if (!Overlaps(solid.rect, centre, radius, radius)) return false;
+
+            Vector2 pushed = PushOut(solid, centre, radius, radius);
+            if (BoxHitsGeometry(pushed, radius, radius)) return true;
+
+            centre = pushed;
+            return false;
+        }
+
+        /// <summary>Clear of the panel's leading face, along the axis it is travelling.</summary>
+        static Vector2 PushOut(in MovingSolid solid, Vector2 centre, float hx, float hy)
+        {
+            bool horizontal = Mathf.Abs(solid.velocity.x) >= Mathf.Abs(solid.velocity.y);
+
+            if (horizontal)
+            {
+                float x = solid.velocity.x > 0f
+                    ? solid.rect.xMax + hx
+                    : solid.rect.xMin - hx;
+
+                return new Vector2(x, centre.y);
+            }
+
+            float y = solid.velocity.y > 0f
+                ? solid.rect.yMax + hy
+                : solid.rect.yMin - hy;
+
+            return new Vector2(centre.x, y);
+        }
+
+        static bool Overlaps(Rect rect, Vector2 centre, float hx, float hy)
+            => centre.x + hx > rect.xMin && centre.x - hx < rect.xMax &&
+               centre.y + hy > rect.yMin && centre.y - hy < rect.yMax;
+
+        /// <summary>
+        /// Whether a body placed here would be inside static geometry. Tiles only: a body
+        /// pushed into a second moving panel is left to the next step's shove, which is the
+        /// same panel-versus-panel case the validator warns about rather than resolving.
+        /// </summary>
+        bool BoxHitsGeometry(Vector2 centre, float hx, float hy)
+        {
+            int x0 = Mathf.FloorToInt(centre.x - hx);
+            int x1 = Mathf.FloorToInt(centre.x + hx);
+            int y0 = Mathf.FloorToInt(centre.y - hy);
+            int y1 = Mathf.FloorToInt(centre.y + hy);
+
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                if (!TileGrid.InBounds(x, y)) return true;      // the room bound counts as a wall
+                if (Grid[x, y] == TileKind.Empty) continue;
+                if (BoxOverlapsTile(centre, hx, hy, x, y)) return true;
+            }
+
+            return false;
         }
 
         static bool BoxOverlapsTile(Vector2 centre, float halfWidth, float halfHeight, int x, int y)

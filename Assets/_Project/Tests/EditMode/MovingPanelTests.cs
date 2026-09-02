@@ -315,5 +315,86 @@ namespace KeepyUppy.SimTests
                             "yet the carrier is still the panel: a tile contact must not erase it");
             Assert.AreEqual(14f - hw, pos.x, 0.01f, "stopped against the wall");
         }
+
+        /// <summary>A panel that travels sideways into whatever is standing next to it.</summary>
+        static LevelPanel Pusher() => new LevelPanel
+        {
+            id = "p01",
+            rect = new[] { 10f, 1f, 1f, 2f },
+            path = new[] { 0f, 0f, 6f, 0f },
+            path_mode = "once",
+            speed = 4f,
+            hold = 0f,
+        };
+
+        /// <summary>
+        /// Ticks until the room kills something, so a crush test asserts on the step the
+        /// crush happened rather than on a hand-counted tick total. Six frames after a death
+        /// the room restarts itself (PlayerTuning.deathRestartFrames), which would clear
+        /// every flag these tests are about.
+        /// </summary>
+        static void TickUntilDead(SimWorld world, int cap = 300)
+        {
+            for (int i = 0; i < cap && !world.IsDead; i++) world.Tick();
+        }
+
+        [Test]
+        public void APanelMovingIntoThePlayer_ShovesThem()
+        {
+            // Standing on the ledge at x 10..14, clear of the panel's authored rect (x 10..11).
+            SimWorld world = PlayableRoom(Pusher(), new Vector2(12.5f, 2.8f));
+            world.Tick(30);
+
+            float before = world.Player.Position.x;
+            world.Panels[0].Run(world.Clock.Step);
+            world.Tick(60);
+
+            Assert.Greater(world.Player.Position.x, before + 1f, "pushed along, not passed through");
+        }
+
+        [Test]
+        public void BeingShoved_DoesNotChangeThePlayersVelocity()
+        {
+            SimWorld world = PlayableRoom(Pusher(), new Vector2(12.5f, 2.8f));
+            world.Tick(30);
+            world.Panels[0].Run(world.Clock.Step);
+            world.Tick(30);
+
+            Assert.AreEqual(0f, world.Player.Velocity.x, 0.01f,
+                            "a shove is a change of position; letting it inject velocity turns "
+                            + "a push into a launch");
+        }
+
+        [Test]
+        public void APlayerPinnedBetweenAPanelAndTheWall_IsCrushed()
+        {
+            // The room's right wall is at x = 31; the panel runs six tiles into it.
+            LevelPanel pusher = Pusher();
+            pusher.rect = new[] { 24f, 1f, 1f, 2f };
+
+            SimWorld world = PlayableRoom(pusher, new Vector2(30.5f, 2f));
+            world.Tick(30);
+
+            world.Panels[0].Run(world.Clock.Step);
+            TickUntilDead(world);
+
+            Assert.IsTrue(world.IsDead);
+            Assert.AreEqual(DeathCause.Crushed, world.LastDeath);
+        }
+
+        [Test]
+        public void ACrushKillsBothBodiesInTheSameStep()
+        {
+            LevelPanel pusher = Pusher();
+            pusher.rect = new[] { 24f, 1f, 1f, 2f };
+
+            SimWorld world = PlayableRoom(pusher, new Vector2(30.5f, 2f));
+            world.Tick(30);
+            world.Panels[0].Run(world.Clock.Step);
+            TickUntilDead(world);
+
+            Assert.IsTrue(world.Player.Popped);
+            Assert.IsTrue(world.Balloon.Popped, "GDD 4.1: linked fate, same step, no exceptions");
+        }
     }
 }
