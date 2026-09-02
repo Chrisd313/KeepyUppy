@@ -408,36 +408,57 @@ namespace KeepyUppy.Sim
             return false;
         }
 
+        /// <summary>
+        /// The balloon's counterpart, as a true circle. Testing its bounding square instead
+        /// would shove — and could crush — a balloon whose corner clips a panel or a tile
+        /// diagonally while the circle itself is clear, which is a pop hitbox LARGER than the
+        /// visual and the one direction GDD 8 forbids.
+        /// </summary>
         bool ShoveCircle(in MovingSolid solid, ref Vector2 centre, float radius)
         {
-            if (!Overlaps(solid.rect, centre, radius, radius)) return false;
+            if (!CircleOverlapsRect(centre, radius, solid.rect)) return false;
 
             Vector2 pushed = PushOut(solid, centre, radius, radius);
-            if (BoxHitsGeometry(pushed, radius, radius)) return true;
+            if (CircleHitsGeometry(pushed, radius)) return true;
 
             centre = pushed;
             return false;
         }
 
-        /// <summary>Clear of the panel's leading face, along the axis it is travelling.</summary>
+        /// <summary>
+        /// Clear of the panel, along whichever axis it is TRAVELLING that the body is least
+        /// deep into.
+        ///
+        /// Choosing by the larger velocity component instead would eject a rider on a
+        /// diagonal panel off its front face: a body overlapping by the sliver the panel just
+        /// rose into it is barely inside vertically and half a panel deep horizontally, and
+        /// the shallow axis is the one it actually came in through. A stationary axis is
+        /// never a candidate — a panel that is not moving along an axis must not eject
+        /// anything along it.
+        /// </summary>
         static Vector2 PushOut(in MovingSolid solid, Vector2 centre, float hx, float hy)
         {
-            bool horizontal = Mathf.Abs(solid.velocity.x) >= Mathf.Abs(solid.velocity.y);
-
-            if (horizontal)
-            {
-                float x = solid.velocity.x > 0f
-                    ? solid.rect.xMax + hx
-                    : solid.rect.xMin - hx;
-
-                return new Vector2(x, centre.y);
-            }
+            float x = solid.velocity.x > 0f
+                ? solid.rect.xMax + hx
+                : solid.rect.xMin - hx;
 
             float y = solid.velocity.y > 0f
                 ? solid.rect.yMax + hy
                 : solid.rect.yMin - hy;
 
-            return new Vector2(centre.x, y);
+            float depthX = solid.velocity.x != 0f ? Mathf.Abs(x - centre.x) : float.MaxValue;
+            float depthY = solid.velocity.y != 0f ? Mathf.Abs(y - centre.y) : float.MaxValue;
+
+            return depthX <= depthY
+                ? new Vector2(x, centre.y)
+                : new Vector2(centre.x, y);
+        }
+
+        static bool CircleOverlapsRect(Vector2 centre, float radius, Rect rect)
+        {
+            float dx = centre.x - Mathf.Clamp(centre.x, rect.xMin, rect.xMax);
+            float dy = centre.y - Mathf.Clamp(centre.y, rect.yMin, rect.yMax);
+            return dx * dx + dy * dy < radius * radius;
         }
 
         static bool Overlaps(Rect rect, Vector2 centre, float hx, float hy)
@@ -462,6 +483,28 @@ namespace KeepyUppy.Sim
                 if (!TileGrid.InBounds(x, y)) return true;      // the room bound counts as a wall
                 if (Grid[x, y] == TileKind.Empty) continue;
                 if (BoxOverlapsTile(centre, hx, hy, x, y)) return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>BoxHitsGeometry's circle form; see ShoveCircle for why it is not the box.</summary>
+        bool CircleHitsGeometry(Vector2 centre, float radius)
+        {
+            int x0 = Mathf.FloorToInt(centre.x - radius);
+            int x1 = Mathf.FloorToInt(centre.x + radius);
+            int y0 = Mathf.FloorToInt(centre.y - radius);
+            int y1 = Mathf.FloorToInt(centre.y + radius);
+
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                // The room bound counts as a wall — but still only where the circle reaches
+                // it, or the bounding square would creep back in at the room's edge.
+                if (!TileGrid.InBounds(x, y) || Grid[x, y] != TileKind.Empty)
+                {
+                    if (CircleOverlapsTile(centre, radius, x, y)) return true;
+                }
             }
 
             return false;

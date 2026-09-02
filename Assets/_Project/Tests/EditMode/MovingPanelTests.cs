@@ -338,6 +338,75 @@ namespace KeepyUppy.SimTests
             for (int i = 0; i < cap && !world.IsDead; i++) world.Tick();
         }
 
+        /// <summary>A panel that climbs to the right, so neither velocity axis is zero.</summary>
+        static LevelPanel Diagonal() => new LevelPanel
+        {
+            id = "p01",
+            rect = new[] { 10f, 1f, 4f, 1f },
+            path = new[] { 0f, 0f, 6f, 6f },
+            path_mode = "once",
+            speed = 6f,
+            hold = 0f,
+        };
+
+        /// <summary>A room with one moving panel, mid-travel, with the bodies parked.</summary>
+        static SimWorld RunningRoom(LevelPanel panel, int steps)
+        {
+            var world = new SimWorld();
+            LevelLoader.Apply(Room(panel), world, out _, out _);
+            world.FloorKillsBalloon = false;
+            world.Configure(new Vector2(2f, 14f), Vector2.zero, new Vector2(12.5f, 2.8f), null, 1);
+
+            world.Panels[0].Run(0);
+            world.Panels.Advance(steps);
+            world.Solids.Rebuild(world.Panels);
+            return world;
+        }
+
+        [Test]
+        public void ABalloonWhoseSquareClipsAPanelCornerButWhoseCircleDoesNot_IsLeftAlone()
+        {
+            SimWorld world = RunningRoom(Pusher(), 15);
+
+            Rect rect = world.Solids[0].rect;
+            float r = world.Balloon.Radius;
+
+            // Diagonally off the panel's top-right corner by 0.875 r on each axis: the
+            // bounding SQUARE overlaps (0.875 r < r) while the circle is clear
+            // (dist = 1.237 r > r). GDD 8 forbids a pop hitbox larger than the visual.
+            var parked = new Vector2(rect.xMax + r * 0.875f, rect.yMax + r * 0.875f);
+            world.Balloon.Position = parked;
+
+            world.ResolveMovingPanels();
+
+            Assert.IsFalse(world.IsDead, "the circle never touched the panel");
+            Assert.AreEqual(parked, world.Balloon.Position, "and so it is not shoved either");
+        }
+
+        [Test]
+        public void ABodyOnADiagonallyRisingPanel_IsLiftedNotEjectedSideways()
+        {
+            SimWorld world = RunningRoom(Diagonal(), 15);
+
+            MovingSolid solid = world.Solids[0];
+            Assert.Greater(solid.velocity.x, 0f);
+            Assert.Greater(solid.velocity.y, 0f, "travelling up AND right, so neither axis wins");
+
+            // Standing on top, overlapping only by the sliver the panel rose into this step.
+            float hh = world.Player.HalfHeight;
+            world.Player.Position = new Vector2(solid.rect.center.x, solid.rect.yMax + hh - 0.05f);
+            float x = world.Player.Position.x;
+
+            world.ResolveMovingPanels();
+
+            Assert.IsFalse(world.IsDead);
+            Assert.AreEqual(x, world.Player.Position.x, 1e-4f,
+                            "not ejected off the front: the axis is chosen by penetration "
+                            + "depth, not by which velocity component is larger");
+            Assert.AreEqual(solid.rect.yMax + hh, world.Player.Position.y, 1e-4f,
+                            "lifted clear of the surface it was standing on");
+        }
+
         [Test]
         public void APanelMovingIntoThePlayer_ShovesThem()
         {
