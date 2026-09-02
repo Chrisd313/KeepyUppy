@@ -50,6 +50,8 @@ namespace KeepyUppy.LevelEditing
             if (!nowOn)
                 GUILayout.Label("   (hidden at load — an appearing platform)");
 
+            changed |= DrawExitDir(session, panel);
+
             LevelLink link = null;
             if (session.Level.links != null)
             {
@@ -75,6 +77,36 @@ namespace KeepyUppy.LevelEditing
 
             return changed;
         }
+
+        /// <summary>
+        /// Which way the tiles leave, and slide back in from. Presentation only — collision
+        /// ends and returns on the step the panel switches whichever of these is picked — so
+        /// this says so rather than letting an author read it as a travel time.
+        /// </summary>
+        static bool DrawExitDir(EditorSession session, LevelPanel panel)
+        {
+            bool changed = false;
+
+            GUILayout.Label("tiles leave");
+            GUILayout.BeginHorizontal();
+
+            foreach (string direction in Directions)
+            {
+                bool active = panel.exit_dir == direction;
+                if (GUILayout.Toggle(active, direction, "Button", GUILayout.Width(46f)) == active) continue;
+
+                session.BeginEdit();
+                session.SetPanelExitDir(panel.id, direction);
+                changed = true;
+            }
+
+            GUILayout.EndHorizontal();
+            GUILayout.Label("   (cosmetic — the tiles switch on one step either way)");
+
+            return changed;
+        }
+
+        static readonly string[] Directions = { "down", "up", "left", "right" };
 
         /// <summary>A labelled number box, through DevNumber as every other panel field is.</summary>
         static float Row(string label, string key, float value, Dictionary<string, string> fieldText)

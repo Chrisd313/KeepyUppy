@@ -335,6 +335,11 @@ namespace KeepyUppy.Sim.Level
 
                 if (!CoversATile(grid, r))
                     warnings.Add($"panel '{panel.id}' covers no tiles — it would hide nothing");
+
+                // Loads as "down" rather than failing, so this is the only place an author
+                // hears about a direction nothing can draw.
+                if (!Panels.PanelDirections.IsKnown(panel.exit_dir))
+                    warnings.Add($"panel '{panel.id}' has an unknown exit_dir '{panel.exit_dir}' — it will fall");
             }
         }
 

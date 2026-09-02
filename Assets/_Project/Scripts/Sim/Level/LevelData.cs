@@ -132,6 +132,15 @@ namespace KeepyUppy.Sim.Level
 
         /// <summary>on | off — whether its tiles are present at the start of the run.</summary>
         public string start_state = "on";
+
+        /// <summary>
+        /// down | up | left | right — which way the tiles go when the panel switches off,
+        /// and which way they slide back in from when it switches on. Presentation only:
+        /// collision ends and returns on the step the panel switches, whatever this says.
+        /// "down" is the default because it is what every level authored before the field
+        /// existed did.
+        /// </summary>
+        public string exit_dir = "down";
     }
 
     [Serializable]

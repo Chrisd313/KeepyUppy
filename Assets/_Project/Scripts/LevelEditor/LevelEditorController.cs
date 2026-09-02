@@ -36,6 +36,23 @@ namespace KeepyUppy.LevelEditing
         int _draggingWaypoint = -1;
         string _lastSelected;
 
+        /// <summary>
+        /// Where a link-tool rubber band started, in world metres. Unsnapped, unlike every
+        /// other drag in this file: an entity sits on a half tile, so a band snapped to whole
+        /// tiles could not clip one.
+        /// </summary>
+        Vector2 _bandStart;
+
+        /// <summary>Whether a band is in progress, and whether it unwires instead of wiring.</summary>
+        bool _banding;
+        bool _bandRemoving;
+
+        /// <summary>
+        /// Metres of drag below which a release is a click, not a band. Both gestures start
+        /// the same way, so this is the only thing separating them.
+        /// </summary>
+        const float BandThreshold = 0.35f;
+
         /// <summary>Which corner handle the current drag has hold of, if any.</summary>
         ZoneCorner _zoneCorner;
 
@@ -300,6 +317,7 @@ namespace KeepyUppy.LevelEditing
                 _erasing = false;
                 _dragging = false;
                 _draggingWaypoint = -1;
+                _banding = false;
                 return;
             }
 
@@ -692,19 +710,36 @@ namespace KeepyUppy.LevelEditing
         /// Wiring (level-editor-spec 4, tool 6). Click a trigger, then click an entity, zone
         /// or trigger to wire it. Right-click an arrow to unwire that one target.
         ///
+        /// Dragging instead of clicking pulls a rubber band and wires everything inside it
+        /// under one edit — a row of saws is one drag, not twelve clicks. The band asks the
+        /// session for the same targets, in the same precedence order, that the clicks would
+        /// have hit, so which gesture the author used never shows up in the file.
+        ///
+        /// Both gestures start with the same press, so nothing is decided until the button
+        /// comes up: a short drag is a click, a long one is a band.
+        ///
         /// The selected trigger IS the pending source, so there is no extra mode state to get
         /// out of sync with what the author can see highlighted.
         /// </summary>
         void LinkTool(Mouse mouse, Vector2 world)
         {
+            if (_banding)
+            {
+                if (!BandReleased(mouse, world)) return;
+
+                if (_bandRemoving) UnwireAt(world);
+                else WireAt(world);
+
+                return;
+            }
+
             if (mouse.rightButton.wasPressedThisFrame)
             {
-                if (!Session.LinkAt(world, out string from, out string to)) return;
+                // With a source selected a right drag can unwire a whole row, so the press is
+                // held; with none there is nothing a band could mean, and it unwires at once.
+                if (Session.SelectedTriggerId != null) StartBand(world, removing: true);
+                else UnwireAt(world);
 
-                Session.BeginEdit();
-                Session.RemoveLink(from, to);
-                SyncDynamic();
-                _status = $"unlinked {from} → {to}";
                 return;
             }
 
@@ -715,7 +750,7 @@ namespace KeepyUppy.LevelEditing
             if (trigger != null && Session.SelectedTriggerId == null)
             {
                 Session.SelectTrigger(trigger.id);
-                _status = $"linking from {trigger.id} — click a target";
+                _status = $"linking from {trigger.id} — click a target, or drag a band";
                 return;
             }
 
@@ -725,6 +760,12 @@ namespace KeepyUppy.LevelEditing
                 return;
             }
 
+            StartBand(world, removing: false);
+        }
+
+        /// <summary>Wires the one target under the cursor — the original click gesture.</summary>
+        void WireAt(Vector2 world)
+        {
             string target = TargetIdAt(world);
 
             if (target == null || target == Session.SelectedTriggerId)
@@ -740,6 +781,70 @@ namespace KeepyUppy.LevelEditing
             Session.AddLink(Session.SelectedTriggerId, target);
             SyncDynamic();
             _status = $"linked {Session.SelectedTriggerId} → {target}";
+        }
+
+        /// <summary>Unwires the one arrow under the cursor.</summary>
+        void UnwireAt(Vector2 world)
+        {
+            if (!Session.LinkAt(world, out string from, out string to)) return;
+
+            Session.BeginEdit();
+            Session.RemoveLink(from, to);
+            SyncDynamic();
+            _status = $"unlinked {from} → {to}";
+        }
+
+        /// <summary>Arms a band from a press. Nothing is wired until the button comes up.</summary>
+        void StartBand(Vector2 world, bool removing)
+        {
+            _bandStart = world;
+            _banding = true;
+            _bandRemoving = removing;
+        }
+
+        /// <summary>
+        /// Resolves a band on the release of the button that started it. Returns true when
+        /// the drag was too short to be a band, so the caller falls back to the click it
+        /// evidently was.
+        /// </summary>
+        bool BandReleased(Mouse mouse, Vector2 world)
+        {
+            bool released = _bandRemoving
+                ? mouse.rightButton.wasReleasedThisFrame
+                : mouse.leftButton.wasReleasedThisFrame;
+
+            if (!released) return false;
+
+            _banding = false;
+
+            if (Vector2.Distance(_bandStart, world) < BandThreshold) return true;
+
+            string source = Session.SelectedTriggerId;
+            if (source == null) return false;
+
+            int touched = 0;
+
+            // One BeginEdit for the whole band: an author who drags over the wrong row wants
+            // one undo back, not one per saw.
+            Session.BeginEdit();
+
+            foreach (string id in Session.TargetIdsIn(ZoneGeometry.Normalise(_bandStart, world)))
+            {
+                if (id == source) continue;
+
+                bool changed = _bandRemoving
+                    ? Session.RemoveLink(source, id)
+                    : Session.AddLink(source, id) != null;
+
+                if (changed) touched++;
+            }
+
+            SyncDynamic();
+
+            string verb = _bandRemoving ? "unlinked" : "linked";
+            _status = touched == 0 ? "band caught nothing" : $"{verb} {touched} — {source}";
+
+            return false;
         }
 
         /// <summary>
@@ -872,6 +977,10 @@ namespace KeepyUppy.LevelEditing
 
             return _paletteRect.Contains(point) || _inspectorRect.Contains(point);
         }
+
+        /// <summary>Where the cursor is, for the overlay pass — OnGUI carries no world position.</summary>
+        Vector2 MouseWorld()
+            => Mouse.current == null ? Vector2.zero : ScreenToWorld(Mouse.current.position.ReadValue());
 
         Vector2 ScreenToWorld(Vector2 screen)
         {
@@ -1608,6 +1717,7 @@ namespace KeepyUppy.LevelEditing
             DrawTriggers();
             DrawPanels();
             DrawLinks();
+            DrawBand();
             if (_showHitboxes) DrawHitboxes();
             DrawEntities();
         }
@@ -1926,6 +2036,29 @@ namespace KeepyUppy.LevelEditing
                     DrawWorldRect(new Rect(tip.x - 0.15f, tip.y - 0.15f, 0.3f, 0.3f), colour);
                 }
             }
+        }
+
+        /// <summary>
+        /// The link tool's rubber band, with a pip on everything it currently covers. Showing
+        /// the catch while the button is still down is the point of the gesture — a band that
+        /// grabbed the wrong row is one undo, but seeing it before the release is free.
+        /// </summary>
+        void DrawBand()
+        {
+            if (!_banding) return;
+
+            Rect band = ZoneGeometry.Normalise(_bandStart, MouseWorld());
+
+            Color fill = _bandRemoving
+                ? new Color(0.85f, 0.45f, 0.45f, 0.18f)
+                : new Color(0.62f, 0.45f, 0.85f, 0.18f);
+
+            DrawWorldRect(band, fill);
+
+            foreach (string id in Session.TargetIdsIn(band))
+                if (Session.TargetCentre(id, out Vector2 centre))
+                    DrawWorldRect(new Rect(centre.x - 0.25f, centre.y - 0.25f, 0.5f, 0.5f),
+                                  new Color(fill.r, fill.g, fill.b, 0.8f));
         }
 
         /// <summary>Violet. Not hazard red, not balloon yellow (GDD 13.1).</summary>

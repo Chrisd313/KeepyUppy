@@ -15,6 +15,13 @@ namespace KeepyUppy.Sim.Panels
         /// <summary>Tile coordinates. A panel is always whole tiles — the mask indexes cells.</summary>
         public RectInt Rect;
 
+        /// <summary>
+        /// Which way its tiles leave, and come back from. Read by the view only — the mask
+        /// switches on one step whatever this says — so it is config, not run state, and
+        /// Reset() leaves it alone.
+        /// </summary>
+        public PanelDirection ExitDir = PanelDirection.Down;
+
         // --- Run state: cleared by Reset(), covered by the replay-equality test ---
 
         /// <summary>Whether its tiles are currently present.</summary>

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using KeepyUppy.Sim;
 using KeepyUppy.Sim.Entities;
 using KeepyUppy.Sim.Level;
+using KeepyUppy.Sim.Panels;
 using UnityEngine;
 
 namespace KeepyUppy.LevelEditing
@@ -780,6 +781,23 @@ namespace KeepyUppy.LevelEditing
             Dirty = true;
         }
 
+        /// <summary>
+        /// Which way the panel's tiles leave. A value the view cannot draw is refused rather
+        /// than written: the file is the source of truth for the shipping game too, and a
+        /// silently-ignored string there is a level that plays differently from how it reads.
+        /// </summary>
+        public void SetPanelExitDir(string id, string direction)
+        {
+            LevelPanel panel = FindPanel(id);
+            if (panel == null) return;
+
+            if (!PanelDirections.IsKnown(direction)) return;
+            if (panel.exit_dir == direction) return;
+
+            panel.exit_dir = direction;
+            Dirty = true;
+        }
+
         public bool DeletePanel(string id)
         {
             LevelPanel panel = FindPanel(id);
@@ -891,6 +909,44 @@ namespace KeepyUppy.LevelEditing
             Dirty = true;
             return true;
         }
+
+        /// <summary>
+        /// Every link target a rubber band touches, in the same precedence order a single
+        /// click resolves — entities, then zones, then triggers, then panels. Wiring a band
+        /// is exactly the clicks the author would otherwise make, so the two must agree.
+        ///
+        /// An entity is a point and counts when the band contains it; everything else is a
+        /// rect and counts when the band overlaps it at all, because dragging across a row
+        /// clips its ends far more often than it encloses them.
+        /// </summary>
+        public string[] TargetIdsIn(Rect band)
+        {
+            var ids = new List<string>();
+
+            if (Level.entities != null)
+                foreach (LevelEntity entity in Level.entities)
+                {
+                    if (entity?.pos == null || entity.pos.Length < 2) continue;
+                    if (band.Contains(new Vector2(entity.pos[0], entity.pos[1]))) ids.Add(entity.id);
+                }
+
+            if (Level.zones != null)
+                foreach (LevelZone zone in Level.zones)
+                    if (Touches(band, zone?.rect)) ids.Add(zone.id);
+
+            if (Level.triggers != null)
+                foreach (LevelTrigger trigger in Level.triggers)
+                    if (Touches(band, trigger?.rect)) ids.Add(trigger.id);
+
+            if (Level.panels != null)
+                foreach (LevelPanel panel in Level.panels)
+                    if (Touches(band, panel?.rect)) ids.Add(panel.id);
+
+            return ids.ToArray();
+        }
+
+        static bool Touches(Rect band, float[] rect)
+            => rect != null && rect.Length >= 4 && band.Overlaps(ZoneGeometry.RectOf(rect));
 
         /// <summary>
         /// Where an id sits in the room, for drawing an arrow to it. Entities, zones and

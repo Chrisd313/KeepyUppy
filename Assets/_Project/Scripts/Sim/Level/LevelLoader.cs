@@ -114,6 +114,7 @@ namespace KeepyUppy.Sim.Level
                     Id = data.id,
                     Rect = new RectInt(Mathf.RoundToInt(r[0]), Mathf.RoundToInt(r[1]),
                                        Mathf.RoundToInt(r[2]), Mathf.RoundToInt(r[3])),
+                    ExitDir = PanelDirections.Parse(data.exit_dir),
                     Enabled = on,
                     StartEnabled = on,
                 });

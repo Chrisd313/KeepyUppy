@@ -186,7 +186,10 @@ namespace KeepyUppy.SimTests
             level.panels = new[]
             {
                 new LevelPanel { id = "p01", rect = new[] { 12f, 4f, 6f, 1f }, start_state = "on" },
-                new LevelPanel { id = "p02", rect = new[] { 20f, 9f, 3f, 1f }, start_state = "off" },
+                new LevelPanel
+                {
+                    id = "p02", rect = new[] { 20f, 9f, 3f, 1f }, start_state = "off", exit_dir = "up",
+                },
             };
 
             _source.Save(level.id, level);
@@ -196,6 +199,8 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual("p01", loaded.panels[0].id);
             Assert.AreEqual(new[] { 12f, 4f, 6f, 1f }, loaded.panels[0].rect);
             Assert.AreEqual("off", loaded.panels[1].start_state);
+            Assert.AreEqual("down", loaded.panels[0].exit_dir, "the default is written, not left blank");
+            Assert.AreEqual("up", loaded.panels[1].exit_dir);
         }
 
         [Test]
