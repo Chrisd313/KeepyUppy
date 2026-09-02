@@ -57,6 +57,15 @@ namespace KeepyUppy.Sim.Panels
         /// <summary>+1 running, -1 returning.</summary>
         public int Direction = 1;
 
+        /// <summary>
+        /// Whether <see cref="Run"/> or <see cref="Return"/> has ever been called. A panel
+        /// with a path does not travel on its own the instant it loads — it waits for a
+        /// trigger, exactly as a switched mask panel waits for one. Without this flag,
+        /// <c>RunStep == 0, Direction == 1</c> is indistinguishable from "told to run at
+        /// step 0", and every moving panel would set off the moment the level did.
+        /// </summary>
+        public bool HasRun;
+
         /// <summary>Offset from the authored rect, as of the last Place().</summary>
         public Vector2 Offset;
 
@@ -72,6 +81,7 @@ namespace KeepyUppy.Sim.Panels
             Enabled = StartEnabled;
             RunStep = 0;
             Direction = 1;
+            HasRun = false;
             Offset = Vector2.zero;
             Velocity = Vector2.zero;
         }
@@ -80,10 +90,14 @@ namespace KeepyUppy.Sim.Panels
         /// Places the panel for this step, and derives the velocity from the next step's
         /// position rather than integrating one. Pure: safe to call for any step, in any
         /// order, exactly as SimEntity.Place is.
+        ///
+        /// A panel that has never been sent out (<see cref="HasRun"/> false) stays parked at
+        /// home regardless of step — the step counter alone cannot tell "runs from step 0"
+        /// apart from "has not been told to run".
         /// </summary>
         public void Place(int step)
         {
-            if (!IsMoving) { Offset = Vector2.zero; Velocity = Vector2.zero; return; }
+            if (!IsMoving || !HasRun) { Offset = Vector2.zero; Velocity = Vector2.zero; return; }
 
             Offset = At(step);
             Velocity = (At(step + 1) - Offset) / SimClock.Dt;
@@ -102,6 +116,7 @@ namespace KeepyUppy.Sim.Panels
         {
             Direction = 1;
             RunStep = step;
+            HasRun = true;
         }
 
         /// <summary>
@@ -116,6 +131,7 @@ namespace KeepyUppy.Sim.Panels
 
             Direction = -1;
             RunStep = step + elapsed;
+            HasRun = true;
         }
     }
 }

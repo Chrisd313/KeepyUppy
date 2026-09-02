@@ -30,6 +30,9 @@ namespace KeepyUppy.Sim
         /// <summary>Geometry a link can take away (GDD 9.3). Masks tiles; see PanelField.</summary>
         public readonly PanelField Panels = new PanelField();
 
+        /// <summary>Moving panels, as the sweeps read them (moving-panels design).</summary>
+        public readonly SolidField Solids = new SolidField();
+
         /// <summary>The way out (GDD 3, 7.4). Absent in the physics-only test rooms.</summary>
         public ExitGate Exit = ExitGate.None;
 
@@ -155,6 +158,8 @@ namespace KeepyUppy.Sim
             Triggers.Reset();
             Panels.Reset();
             Panels.Apply(Grid);
+            Panels.Advance(0);
+            Solids.Rebuild(Panels);
             Air.ResetStates();
             Entities.Reset();
             Entities.Step(0, Air);

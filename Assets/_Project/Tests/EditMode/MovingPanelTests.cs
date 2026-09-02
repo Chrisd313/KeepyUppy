@@ -147,5 +147,53 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(0, panel.RunStep);
             Assert.AreEqual(1, panel.Direction);
         }
+
+        [Test]
+        public void AMovingPanelsTiles_AreNotInTheMask_AndAreNotSolidWhereTheyWereAuthored()
+        {
+            var world = new SimWorld();
+            LevelLoader.Apply(Room(Riser()), world, out _, out _);
+            world.Panels.Advance(0);
+            world.Panels.Apply(world.Grid);
+
+            Assert.IsTrue(world.Grid.IsMasked(10, 1),
+                          "its tiles left the grid at load — the panel carries them now");
+            Assert.AreEqual(TileKind.Solid, world.Grid.BaseAt(10, 1),
+                            "but the authored rows are untouched, as with any mask");
+        }
+
+        [Test]
+        public void TheSolidFieldCarriesEveryEnabledMovingPanel_InListOrder()
+        {
+            LevelPanel second = Riser();
+            second.id = "p02";
+            second.rect = new[] { 20f, 1f, 2f, 1f };
+
+            var world = new SimWorld();
+            LevelLoader.Apply(Room(Riser(), second), world, out _, out _);
+
+            world.Panels[0].Run(0);
+            world.Panels.Advance(15);
+            world.Solids.Rebuild(world.Panels);
+
+            Assert.AreEqual(2, world.Solids.Count);
+            Assert.AreEqual(0, world.Solids[0].panel, "list order, never a dictionary");
+            Assert.AreEqual(2.5f, world.Solids[0].rect.yMin, 1e-3f, "the one that ran has moved");
+            Assert.AreEqual(1f, world.Solids[1].rect.yMin, 1e-3f, "the one that did not has not");
+            Assert.AreEqual(6f, world.Solids[0].velocity.y, 1e-3f);
+        }
+
+        [Test]
+        public void ASwitchedOffMovingPanel_IsNotASolidAnywhere()
+        {
+            var world = new SimWorld();
+            LevelLoader.Apply(Room(Riser()), world, out _, out _);
+
+            world.Panels.SetEnabled("p01", false);
+            world.Panels.Advance(0);
+            world.Solids.Rebuild(world.Panels);
+
+            Assert.AreEqual(0, world.Solids.Count, "off means it is not a solid, not that it is parked");
+        }
     }
 }
