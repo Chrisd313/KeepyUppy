@@ -269,5 +269,51 @@ namespace KeepyUppy.SimTests
             Assert.AreEqual(4f, a.Panels[0].WorldRect.yMin, 1e-3f,
                             "and it passed for the right reason: the panel really travelled");
         }
+        /// <summary>
+        /// A body riding a panel that also brushes a wall in the same step is still riding
+        /// the panel. The wall contact resolves second, and must not erase the carrier the
+        /// panel contact recorded — the shove and crush passes read that field to decide
+        /// which panel owns the body.
+        /// </summary>
+        [Test]
+        public void ATileContactDoesNotErase_ThePanelTheBodyIsRiding()
+        {
+            var grid = new TileGrid();
+            grid.FillBorder();
+            grid.Fill(14, 2, 1, 5, TileKind.Solid);   // a wall along the panel's right edge
+
+            var panels = new PanelField();
+            panels.Add(new SimPanel
+            {
+                Id = "p01",
+                Rect = new RectInt(10, 1, 4, 1),
+                Points = new[] { Vector2.zero, new Vector2(0f, 3f) },
+                Mode = PathMode.Once,
+                Speed = 6f,
+            });
+            panels[0].Run(0);
+            panels.Advance(0);
+
+            var solids = new SolidField();
+            solids.Rebuild(panels);
+            Assert.AreEqual(6f, solids[0].velocity.y, 1e-3f, "the panel is rising this step");
+
+            const float hw = 0.40f;
+            const float hh = 0.80f;
+
+            // Standing on the panel's top (y = 2) and running right, close enough that the
+            // wall is reached part way through the step rather than at its very start.
+            var pos = new Vector2(13.55f, 2f + hh + 1e-4f);
+            var vel = new Vector2(6f, -40f * SimClock.Dt);
+
+            SweepResult result = SweptAabb.Move(grid, solids, hw, hh, ref pos, ref vel, SimClock.Dt);
+
+            Assert.IsTrue(result.hitFloor, "it landed on the panel");
+            Assert.AreEqual(-1f, result.lastNormal.x, 1e-3f,
+                            "and the LAST contact of the step was the wall, not the panel");
+            Assert.AreEqual(0, result.carrier,
+                            "yet the carrier is still the panel: a tile contact must not erase it");
+            Assert.AreEqual(14f - hw, pos.x, 0.01f, "stopped against the wall");
+        }
     }
 }

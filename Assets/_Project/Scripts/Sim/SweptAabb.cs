@@ -74,7 +74,11 @@ namespace KeepyUppy.Sim
                 result.lastKind = kind;
                 result.lastTileX = tileX;
                 result.lastTileY = tileY;
-                result.carrier = solidIndex;
+
+                // Only a panel contact rewrites the carrier, exactly as it is the only kind
+                // that rewrites `carry` below. A body riding a panel that then brushes a wall
+                // in a later iteration is still riding the panel, and the field says so.
+                if (solidIndex >= 0) result.carrier = solidIndex;
                 if (normal.y >= SweptCircle.FloorNormalThreshold) result.hitFloor = true;
 
                 pos = new Vector2(
