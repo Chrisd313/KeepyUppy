@@ -1,3 +1,4 @@
+using KeepyUppy.Sim.Panels;
 using UnityEngine;
 
 namespace KeepyUppy.Sim
@@ -20,22 +21,48 @@ namespace KeepyUppy.Sim
         const int MaxIterations = 4;
         const float Epsilon = 1e-12f;
 
+        /// <summary>Grid only. The rooms with no moving panels, and every existing caller.</summary>
         public static SweepResult Move(TileGrid grid, float halfWidth, float halfHeight,
+                                       ref Vector2 pos, ref Vector2 vel, float dt)
+            => Move(grid, null, halfWidth, halfHeight, ref pos, ref vel, dt);
+
+        /// <summary>
+        /// Grid and moving panels (moving-panels design).
+        ///
+        /// A panel is swept in its OWN frame - the body's delta minus the panel's - which is
+        /// what makes a panel moving INTO a body a contact rather than a miss, and it is the
+        /// only reason a body standing still on a rising floor is hit at all.
+        ///
+        /// Once a panel contact is resolved the body rides it for the rest of the step. That
+        /// ride is folded into the body's DELTA, never into <paramref name="vel"/>: a player
+        /// on a rising floor must jump exactly as high as one standing on the world. Carrying
+        /// it in the delta rather than adding it to the position after the loop also keeps
+        /// the swept guarantee - the carried metres are cast against the world like any other
+        /// motion, so a rising panel cannot post a body through a ceiling.
+        /// </summary>
+        public static SweepResult Move(TileGrid grid, SolidField solids,
+                                       float halfWidth, float halfHeight,
                                        ref Vector2 pos, ref Vector2 vel, float dt)
         {
             Depenetrate(grid, halfWidth, halfHeight, ref pos);
 
             var result = default(SweepResult);
+            result.carrier = -1;
             int contacts = 0;
             float timeLeft = dt;
 
+            // The panel the body is riding, in tiles per second. Zero until one is actually
+            // contacted, so a room with no moving panels sweeps exactly as it always did.
+            Vector2 carry = Vector2.zero;
+
             for (int i = 0; i < MaxIterations && timeLeft > 0f; i++)
             {
-                Vector2 delta = new Vector2(vel.x * timeLeft, vel.y * timeLeft);
+                Vector2 delta = new Vector2((vel.x + carry.x) * timeLeft,
+                                            (vel.y + carry.y) * timeLeft);
 
-                if (!Cast(grid, pos, delta, halfWidth, halfHeight,
+                if (!Cast(grid, solids, pos, delta, halfWidth, halfHeight, timeLeft,
                           out float tHit, out Vector2 normal,
-                          out TileKind kind, out int tileX, out int tileY))
+                          out TileKind kind, out int tileX, out int tileY, out int solidIndex))
                 {
                     pos = new Vector2(pos.x + delta.x, pos.y + delta.y);
                     result.contacts = contacts;
@@ -47,6 +74,7 @@ namespace KeepyUppy.Sim
                 result.lastKind = kind;
                 result.lastTileX = tileX;
                 result.lastTileY = tileY;
+                result.carrier = solidIndex;
                 if (normal.y >= SweptCircle.FloorNormalThreshold) result.hitFloor = true;
 
                 pos = new Vector2(
@@ -61,6 +89,11 @@ namespace KeepyUppy.Sim
                     vel = new Vector2(vel.x - normal.x * vn, vel.y - normal.y * vn);
                 }
 
+                // Adopt the panel just hit as the carrier. A tile contact leaves the current
+                // one alone: walking into a wall must not throw the body off the floor it is
+                // riding.
+                if (solidIndex >= 0) carry = solids[solidIndex].velocity;
+
                 timeLeft *= 1f - tHit;
             }
 
@@ -68,10 +101,25 @@ namespace KeepyUppy.Sim
             return result;
         }
 
+        /// <summary>Grid only. Kept for the callers that have no panels to offer.</summary>
         public static bool Cast(TileGrid grid, Vector2 p, Vector2 d, float hx, float hy,
                                 out float t, out Vector2 normal,
                                 out TileKind kind, out int tileX, out int tileY)
+            => Cast(grid, null, p, d, hx, hy, 0f,
+                    out t, out normal, out kind, out tileX, out tileY, out _);
+
+        /// <summary>
+        /// Earliest contact across the tiles and the moving panels. <paramref name="span"/> is
+        /// the seconds this cast covers, which is what turns a panel's tiles-per-second into
+        /// the metres it travels while the body travels <paramref name="d"/>.
+        /// </summary>
+        public static bool Cast(TileGrid grid, SolidField solids, Vector2 p, Vector2 d,
+                                float hx, float hy, float span,
+                                out float t, out Vector2 normal,
+                                out TileKind kind, out int tileX, out int tileY,
+                                out int solidIndex)
         {
+            solidIndex = -1;
             t = float.MaxValue;
             normal = Vector2.zero;
             kind = TileKind.Empty;
@@ -105,6 +153,33 @@ namespace KeepyUppy.Sim
                 }
             }
 
+            if (solids != null)
+            {
+                for (int i = 0; i < solids.Count; i++)
+                {
+                    MovingSolid solid = solids[i];
+
+                    // Relative velocity: resolving in the panel's frame is what makes a panel
+                    // moving INTO the body a contact rather than a miss.
+                    Vector2 rel = new Vector2(d.x - solid.velocity.x * span,
+                                              d.y - solid.velocity.y * span);
+
+                    if (!SweepRect(p, rel, hx, hy,
+                                   solid.rect.xMin, solid.rect.yMin,
+                                   solid.rect.xMax, solid.rect.yMax,
+                                   out float ht, out Vector2 hn)) continue;
+                    if (ht >= t) continue;
+
+                    t = ht;
+                    normal = hn;
+                    kind = TileKind.Solid;
+                    tileX = 0;
+                    tileY = 0;
+                    solidIndex = i;
+                    found = true;
+                }
+            }
+
             if (!found) t = 0f;
             return found;
         }
@@ -112,12 +187,21 @@ namespace KeepyUppy.Sim
         /// <summary>Ray vs the tile box expanded by the mover's half-extents (Minkowski sum).</summary>
         static bool SweepTile(Vector2 p, Vector2 d, float hx, float hy, int tx, int ty,
                               out float t, out Vector2 normal)
+            => SweepRect(p, d, hx, hy, tx, ty, tx + 1, ty + 1, out t, out normal);
+
+        /// <summary>
+        /// The same Minkowski sweep against an arbitrary box, so a panel and a tile share one
+        /// piece of maths instead of two that can drift apart.
+        /// </summary>
+        static bool SweepRect(Vector2 p, Vector2 d, float hx, float hy,
+                              float bx0, float by0, float bx1, float by1,
+                              out float t, out Vector2 normal)
         {
             t = 0f;
             normal = Vector2.zero;
 
-            float ex0 = tx - hx, ey0 = ty - hy;
-            float ex1 = tx + 1 + hx, ey1 = ty + 1 + hy;
+            float ex0 = bx0 - hx, ey0 = by0 - hy;
+            float ex1 = bx1 + hx, ey1 = by1 + hy;
 
             if (p.x > ex0 && p.x < ex1 && p.y > ey0 && p.y < ey1)
             {

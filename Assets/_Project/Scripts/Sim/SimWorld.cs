@@ -233,6 +233,11 @@ namespace KeepyUppy.Sim
             // step or a live tuning-panel edit would never reach ApplyHit.
             Hits.Tuning = Tuning;
 
+            // Panels move before anything else: a body must never be placed inside geometry
+            // that arrived in the same step.
+            Panels.Advance(step);
+            Solids.Rebuild(Panels);
+
             // Hazards move before either body does, so a saw and the balloon it catches are
             // contemporaries rather than a frame apart.
             Entities.Step(step, Air);
@@ -353,7 +358,7 @@ namespace KeepyUppy.Sim
 
         void StepPlayer()
         {
-            Player.Step(PlayerTuning, Input, Grid);
+            Player.Step(PlayerTuning, Input, Grid, Solids);
 
             if (Hazards.PlayerOverlapsLethal(Grid, Player.Position, Player.HalfWidth,
                                              Player.HalfHeight, Tuning.hazardPopRadiusShrink))

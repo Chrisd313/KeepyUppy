@@ -195,5 +195,79 @@ namespace KeepyUppy.SimTests
 
             Assert.AreEqual(0, world.Solids.Count, "off means it is not a solid, not that it is parked");
         }
+        static SimWorld PlayableRoom(LevelPanel panel, Vector2 playerSpawn)
+        {
+            var world = new SimWorld();
+            LevelLoader.Apply(Room(panel), world, out _, out _);
+            world.FloorKillsBalloon = false;
+            world.Configure(new Vector2(2f, 14f), Vector2.zero, playerSpawn, null, 1);
+            return world;
+        }
+
+        [Test]
+        public void AMovingPanelBlocksThePlayer_LikeAnyOtherFloor()
+        {
+            // Panel spans x 10..14 at y 1..2; the player is dropped onto it from above.
+            SimWorld world = PlayableRoom(Riser(), new Vector2(12f, 6f));
+
+            world.Tick(60);
+
+            Assert.IsTrue(world.Player.Grounded, "landed on the panel, not fallen through it");
+            Assert.AreEqual(2f + world.Player.HalfHeight, world.Player.Position.y, 0.05f);
+        }
+
+        [Test]
+        public void APlayerStandingOnARisingPanel_IsCarriedUp()
+        {
+            SimWorld world = PlayableRoom(Riser(), new Vector2(12f, 6f));
+            world.Tick(60);
+
+            float before = world.Player.Position.y;
+            world.Panels[0].Run(world.Clock.Step);
+
+            world.Tick(30);
+
+            Assert.AreEqual(before + 3f, world.Player.Position.y, 0.1f,
+                            "carried the panel's full three tiles");
+            Assert.IsTrue(world.Player.Grounded, "and is still standing on it");
+        }
+
+        [Test]
+        public void CarryIsDisplacement_NotVelocity()
+        {
+            SimWorld world = PlayableRoom(Riser(), new Vector2(12f, 6f));
+            world.Tick(60);
+            world.Panels[0].Run(world.Clock.Step);
+            world.Tick(10);
+
+            Assert.AreEqual(0f, world.Player.Velocity.y, 0.01f,
+                            "a rising floor must not put velocity into the player, or a jump "
+                            + "taken from it would go higher than one taken from the world");
+        }
+        [Test]
+        public void ARoomWithAMovingPanel_ReplaysIdentically()
+        {
+            // GDD 6.1. Panels only began advancing inside Tick with the player collision, so
+            // the replay guarantee has to cover a ridden panel or it covers nothing new.
+            SimWorld a = PlayableRoom(Riser(), new Vector2(12f, 6f));
+            SimWorld b = PlayableRoom(Riser(), new Vector2(12f, 6f));
+
+            a.Panels[0].Run(0);
+            b.Panels[0].Run(0);
+
+            for (int i = 0; i < 300; i++)
+            {
+                a.Tick();
+                b.Tick();
+
+                Assert.AreEqual(a.Player.Position, b.Player.Position, $"player at step {i}");
+                Assert.AreEqual(a.Player.Velocity, b.Player.Velocity, $"velocity at step {i}");
+                Assert.AreEqual(a.Panels[0].WorldRect, b.Panels[0].WorldRect, $"panel at step {i}");
+                Assert.AreEqual(a.Balloon.Position, b.Balloon.Position, $"balloon at step {i}");
+            }
+
+            Assert.AreEqual(4f, a.Panels[0].WorldRect.yMin, 1e-3f,
+                            "and it passed for the right reason: the panel really travelled");
+        }
     }
 }
