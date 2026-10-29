@@ -1,4 +1,5 @@
 using KeepyUppy.InputLayer;
+using KeepyUppy.Sim.Panels;
 using UnityEngine;
 
 namespace KeepyUppy.Sim
@@ -56,7 +57,12 @@ namespace KeepyUppy.Sim
             _rising = false;
         }
 
+        /// <summary>Grid only. Rooms with no moving panels, and the tests that predate them.</summary>
         public SweepResult Step(in PlayerTuning t, IInputSource input, TileGrid grid)
+            => Step(t, input, grid, null);
+
+        public SweepResult Step(in PlayerTuning t, IInputSource input, TileGrid grid,
+                                SolidField solids)
         {
             // --- Input buffer (frames, never seconds) ---
             if (input != null && input.JumpPressed)
@@ -108,7 +114,7 @@ namespace KeepyUppy.Sim
             // --- Move ---
             Vector2 pos = Position;
             Vector2 vel = Velocity;
-            SweepResult result = SweptAabb.Move(grid, HalfWidth, HalfHeight,
+            SweepResult result = SweptAabb.Move(grid, solids, HalfWidth, HalfHeight,
                                                 ref pos, ref vel, SimClock.Dt);
             Position = pos;
             Velocity = vel;

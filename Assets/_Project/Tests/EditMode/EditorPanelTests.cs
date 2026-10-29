@@ -109,6 +109,21 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void SetPanelExitDir_WritesTheField_AndRejectsAnythingElse()
+        {
+            EditorSession session = Session();
+            LevelPanel panel = session.AddPanel(new Rect(10f, 1f, 6f, 1f));
+
+            Assert.AreEqual("down", panel.exit_dir, "a new panel falls, as every existing one does");
+
+            session.SetPanelExitDir(panel.id, "up");
+            Assert.AreEqual("up", panel.exit_dir);
+
+            session.SetPanelExitDir(panel.id, "sideways");
+            Assert.AreEqual("up", panel.exit_dir, "a value the sim cannot draw never reaches the file");
+        }
+
+        [Test]
         public void APanelCanBeALinkTarget_AndDeletingItCleansTheLinkUp()
         {
             EditorSession session = Session();

@@ -80,10 +80,20 @@ namespace KeepyUppy.Sim.Panels
         /// <summary>GDD 8: part of the synchronous restart.</summary>
         public void Reset()
         {
-            for (int i = 0; i < _panels.Count; i++) _panels[i].Enabled = _panels[i].StartEnabled;
+            for (int i = 0; i < _panels.Count; i++) _panels[i].Reset();
 
             TurnedOnThisStep.Clear();
             Dirty = true;
+        }
+
+        /// <summary>
+        /// Places every moving panel for this step. Called once per tick, before anything
+        /// reads a panel's position — the sweeps, the shove pass and the view all do.
+        /// </summary>
+        public void Advance(int step)
+        {
+            for (int i = 0; i < _panels.Count; i++)
+                if (_panels[i].IsMoving) _panels[i].Place(step);
         }
 
         /// <summary>Rebuilds the grid's mask from the current flags.</summary>
@@ -96,7 +106,11 @@ namespace KeepyUppy.Sim.Panels
             for (int i = 0; i < _panels.Count; i++)
             {
                 SimPanel panel = _panels[i];
-                if (!panel.Enabled) grid.SetMasked(panel.Rect, true);
+
+                // A moving panel's tiles left the grid at load: they travel with the panel,
+                // and a copy of them sitting at the authored rect would be a second, static
+                // solid nobody authored.
+                if (panel.IsMoving || !panel.Enabled) grid.SetMasked(panel.Rect, true);
             }
 
             Dirty = false;

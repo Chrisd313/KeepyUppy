@@ -351,6 +351,24 @@ namespace KeepyUppy.SimTests
         }
 
         [Test]
+        public void APanelWithAnExitDirectionNothingCanDraw_Warns()
+        {
+            LevelData level = Valid();
+
+            level.panels = new[]
+            {
+                new LevelPanel { id = "p01", rect = new[] { 4f, 0f, 4f, 1f }, exit_dir = "sideways" },
+            };
+            level.triggers = new[]
+            {
+                new LevelTrigger { id = "t01", type = "player_region", rect = new[] { 2f, 1f, 2f, 2f } },
+            };
+            level.links = new[] { new LevelLink { from = "t01", to = new[] { "p01" }, action = "off" } };
+
+            AssertWarns(level, "exit_dir");
+        }
+
+        [Test]
         public void AWellFormedPanel_ProducesNoPanelWarnings()
         {
             LevelData level = Valid();

@@ -148,7 +148,9 @@ One JSON file per level, human-readable, one file per level, committed to git. T
     {
       "id": "p01",
       "rect": [16, 0, 4, 1],             // x, y, w, h in tiles — rounded to whole tiles
-      "start_state": "on"                // on|off — whether its tiles are present at the start
+      "start_state": "on",               // on|off — whether its tiles are present at the start
+      "exit_dir": "down"                 // down|up|left|right — which way the tiles leave.
+                                         // Presentation only; absent reads as "down".
     }
   ],
 
@@ -276,7 +278,7 @@ Immediate-mode / debug UI only (Unity IMGUI, Godot Control nodes, or Dear ImGui)
 | Select/move | `3` | Click entity to select. Drag to move. Shift-click multi-select. Also picks up the **player and balloon spawns** and the exit — tested in that order, since the gate is large enough to swallow a marker sitting in the doorway. A dragged spawn moves the frozen body with it, so the body is the marker; coordinates are typable in the inspector. A level with no `spawn` block still shows both markers, at the loader's own defaults. |
 | Zone | `4` | Drag empty space to create, drag a zone to move, drag a corner handle to resize. `N` toggles a forced create so an overlapping zone can be drawn. `Delete` or right-click removes one. Type, rect, `params` and `start_state` in the inspector. |
 | Path | `5` | With an entity selected, click to append waypoints. Drag a handle to move one, right-click to delete. Handle 0 is the entity and moves the whole trap. |
-| Link | `6` | Click a trigger then a target to wire it, right-click an arrow to unwire it. Targets append to one link per source. |
+| Link | `6` | Click a trigger then a target to wire it, right-click an arrow to unwire it. With a source selected, *drag* a band instead to wire everything it touches in one edit; right-drag unwires the same way. Targets append to one link per source. |
 | Place | `P` | Click drops the palette entity at the cursor. Numbered 7 internally so the reserved digit bindings above do not shuffle. |
 | Trigger | `8` | Drag empty space to create, drag a trigger to move, drag a corner handle to resize. `Delete` or right-click removes one. Type, rect, `once`, `visible`, `seconds` and the outgoing link in the inspector. |
 | Panel | `9` | Drag a rect of tiles a link can take away. Hatched when it starts hidden. |
@@ -529,7 +531,42 @@ exception `StepInterpolator` and `TimeControl` already carry) — determinism is
 because the sim never observes it.
 
 **Editor:** `9` is the Panel tool — drag a rect of tiles, same gesture as Trigger on `8`.
-Selecting a panel shows its `id`, `rect` and `start_state` in the inspector
+Selecting a panel shows its `id`, `rect`, `start_state` and `exit_dir` in the inspector
 (`PanelInspector`). A panel is drawn amber (not the trigger's violet, a hazard's red, or the
 balloon's yellow — GDD §13.1) and hatched when `start_state` is `"off"`, so the author can see
 geometry the player will not.
+
+### Panel exit direction, and banding a link — 2026-09-02, as built
+
+**`exit_dir` says which way a panel's tiles leave, and it is presentation only.** A wall that
+retracts upward and a floor that drops are the same switch: the mask changes on one fixed step
+either way, collision ends on that step, and nothing under `Sim/` reads the field during a tick
+(`SimPanel.ExitDir` is load-time config, untouched by `Reset()`). `PanelDirections.Parse`
+answers `down` for an absent or unrecognised value, so every level authored before the field
+existed keeps falling; `LevelValidator` warns about a value nothing can draw rather than
+refusing to load it, because a half-finished level must always be saveable.
+
+**The per-cell mask edge stayed; only the lookup is new.** `PanelViewSync` still asks
+`TileGrid.IsMasked` per cell rather than per panel — the reasoning that killed the per-panel
+model has not changed. What a cell now needs is a *direction*, so `DirectionAt` traces the cell
+back to the first panel in level order that covers it and is in the state which caused the
+edge. Where panels overlap that is a tie broken by file order; the view is its only reader, so
+nothing about the simulation depends on the answer.
+
+**Tiles that come back slide in, and the slide is deliberately too short to be fair.** A
+returning tile is solid, lethal and crushing from the switching step (`CrushBodiesInReturningPanels`),
+so any arrival animation is showing empty space where a solid already is. The arrival quad
+therefore covers 1 tile in 0.1 s — six fixed steps, short enough that the gap cannot be acted
+on. Making it honest instead (delaying the sim's switch by the slide) was considered and
+rejected: it adds per-panel countdown state to the tick, and it retimes every level already
+authored against the instant switch.
+
+**Wiring a row is a drag, not twelve clicks.** With a trigger selected, the Link tool's press
+is held until release: a drag under 0.35 m is the old click, anything longer is a rubber band.
+`EditorSession.TargetIdsIn(Rect)` answers with the ids the band touches in the same precedence
+order a single click resolves — entities (by point), then zones, triggers and panels (by rect
+overlap, because dragging across a row clips its ends far more often than it encloses them) —
+so which gesture the author used never shows up in the file. The whole band is one
+`BeginEdit`: a band over the wrong row is one undo back, not one per saw. Right-drag unwires
+by the same rule. This is authoring only; there is no group object in the schema, because a
+link already names as many targets as it likes.

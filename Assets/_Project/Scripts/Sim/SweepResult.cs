@@ -18,6 +18,13 @@ namespace KeepyUppy.Sim
         public int lastTileX;
         public int lastTileY;
 
+        /// <summary>
+        /// Index into SolidField of the moving panel this sweep ended against, or -1. This is
+        /// what lets the step after the sweep tell "stood on a moving floor" from "stood on
+        /// the world" without re-testing every solid.
+        /// </summary>
+        public int carrier;
+
         public bool Any => contacts > 0;
     }
 }
